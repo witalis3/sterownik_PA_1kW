@@ -23,6 +23,7 @@
  Całkowity pobór prądu z 5V (wyświetlacz, shield, arduino mega 2560) około 400mA.
 
  ToDo
+ 	 - co z mocą w setupie (może olać)?
  	 - bargraf od SWRa lewa strona??
  	 - obsługa/brak obsługi kodu banddata z poza LPFów
  	 	 - i wyłączanie obsługi pasma 6m (#define JEST_6m)
@@ -819,7 +820,6 @@ void read_inputs();
 float calc_SWR(int forward, int ref);
 // SWR by UHSDR
 bool UpdatePowerAndVSWR();
-static void PowerFromADCValue(float inval, float sensor_null, float coupling_calc,volatile float* pwr_ptr, volatile float* dbm_ptr);
 
 void setup()
 {
@@ -1090,12 +1090,15 @@ void loop()
 
 	//-----------------------------------------------------------------------------
 	// Set display values. The widgets monitors the values and output an errorString
-
-	pwrBar.setValue(pwrForwardValue, drawWidgetIndex == 1);
 	// SWR by UHSDR
 	if (UpdatePowerAndVSWR())
 	{
+		pwrForwardValue = sq(forwardValue * pwrForwardFactor) / 50;
+		pwrReturnValue = sq(returnValue * pwrReturnFactor)/50;
+		pwrBar.setValue(pwrForwardValue, drawWidgetIndex == 1);
+
 		swrValue = swrm.vswr;
+		swrBar.setValue(swrValue, drawWidgetIndex == 3);
 		if (swrValue > thresholdSWR)
 		{
 			// blokada od wysokiego SWR anteny na razie wyłączona
@@ -1108,8 +1111,6 @@ void loop()
 			SWR3Value = false;
 		}
 	}
-	//swrValue = calc_SWR(forwardValue, returnValue);
-	swrBar.setValue(swrValue, drawWidgetIndex == 3);
 
 	drainVoltageBox.setFloat(drainVoltageValue, 1, 4, drawWidgetIndex == 5);
 	aux1VoltageBox.setFloat(aux1VoltageValue, 1, 4, drawWidgetIndex == 6);
@@ -1521,10 +1522,7 @@ void read_inputs()
 	//-----------------------------------------------------------------------------
 	// Read all inputs
 	forwardValue = analogRead(aiPin_pwrForward);
-	pwrForwardValue = sq(forwardValue * pwrForwardFactor) / 50;
-	//pwrReturnValue = analogRead(aiPin_pwrReturn) * pwrReturnFactor; -> błąd!
 	returnValue = analogRead(aiPin_pwrReturn);
-	pwrReturnValue = sq(returnValue * pwrReturnFactor)/50;
 	drainVoltageValue = analogRead(aiPin_drainVoltage) * drainVoltageFactor;
 	aux1VoltageValue = analogRead(aiPin_aux1Voltage) * aux1VoltageFactor;
 	pa1AmperValue = analogRead(aiPin_pa1Amper)*pa1AmperFactor;
@@ -1569,34 +1567,19 @@ float calc_SWR(int forward, int ref)
 // SWR by UHSDR
 bool UpdatePowerAndVSWR()
 {
-	uint16_t val_p, val_s = 0;
-	float sensor_null, coupling_calc;
+	//uint16_t val_p, val_s = 0;
 	bool retval = false;
 
 	// Collect samples
 	if (swrm.p_curr < SWR_SAMPLES_CNT)
 	{
-		// Get next sample
-		//forwardValue = analogRead(aiPin_pwrForward);
-		val_p = forwardValue;
-		//returnValue = analogRead(aiPin_pwrReturn);
-		val_s = returnValue;
 		// Add to accumulator to average A/D values
-		swrm.fwd_calc += val_p;
-		swrm.rev_calc += val_s;
+		swrm.fwd_calc += forwardValue;
+		swrm.rev_calc += returnValue;
 		swrm.p_curr++;
 	}
 	else
 	{
-		// obtain and calculate power meter coupling coefficients
-		coupling_calc = (swrm.coupling_calc[bandIdx] - 100.0) / 10.0;
-		// offset to zero and rescale to 0.1 dB/unit
-
-		sensor_null = (swrm.sensor_null - 100.0) / 1000;
-		// get calibration factor
-		// offset it so that 100 = 0
-		// divide so that each step = 1 millivolt
-
 		// Compute average values
 		swrm.fwd_pwr = sq((swrm.fwd_calc / SWR_SAMPLES_CNT) * pwrForwardFactor) / 50;
 		swrm.rev_pwr = sq((swrm.rev_calc / SWR_SAMPLES_CNT) * pwrReturnFactor) / 50;
@@ -1633,37 +1616,4 @@ bool UpdatePowerAndVSWR()
 		retval = true;
 	}
 	return retval;
-}
-
-static void PowerFromADCValue(float inval, float sensor_null,
-		float coupling_calc, volatile float *pwr_ptr, volatile float *dbm_ptr)
-{
-	float pwr;
-	const float val = sensor_null + ((inval * SWR_ADC_VOLT_REFERENCE) / 1023);
-	// get nominal A/D reference voltage
-	// divide by full-scale A/D count to yield actual input voltage from detector
-	// offset result
-
-	if (val <= LOW_POWER_CALC_THRESHOLD) // is this low power as evidenced by low voltage from the sensor?
-	{
-		pwr = LOW_RF_PWR_COEFF_A + (LOW_RF_PWR_COEFF_B * val)
-				+ (LOW_RF_PWR_COEFF_C * (val * val))
-				+ (LOW_RF_PWR_COEFF_D * powf(val, 3));
-	}
-	else            // it is high power
-	{
-		pwr = HIGH_RF_PWR_COEFF_A + (HIGH_RF_PWR_COEFF_B * val)
-				+ (HIGH_RF_PWR_COEFF_C * (val * val));
-	}
-	// calculate forward and reverse RF power in watts (p = a + bx + cx^2) for high power ;-) (above 50-60 mW)
-
-	if (pwr < 0) // prevent negative power readings from emerging from the equations - particularly at zero output power
-	{
-		pwr = 0;
-	}
-
-	const float dbm = (10 * (log10f(pwr))) + 30 + coupling_calc;
-	*dbm_ptr = dbm;
-	//*pwr_ptr = pow10f(dbm / 10) / 1000;
-	*pwr_ptr = pow(10.0, dbm / 10) / 1000;
 }
