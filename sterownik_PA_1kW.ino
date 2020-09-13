@@ -4,6 +4,8 @@
 #include <SoftwareSerial.h>
 #include <UTouch.h>
 
+#include "sterownik_PA_1kW.h"
+
 /*
  Na bazie sterownika DC5ME:
  	 - wyświetlacz z buydisplay model ER-TFTM050-5 5 cali z kontrolerem SSD1963 i dotykiem rezystancyjnym (resistive touch);
@@ -21,6 +23,24 @@
  Całkowity pobór prądu z 5V (wyświetlacz, shield, arduino mega 2560) około 400mA.
 
  ToDo
+ 	 - bargraf od SWRa lewa strona??
+ 	 - obsługa/brak obsługi kodu banddata z poza LPFów
+ 	 	 - i wyłączanie obsługi pasma 6m (#define JEST_6m)
+ 	 	 - blokada
+
+ 	- zrobione! D3 wejście: stan niski kolejny alarm -> od termostatu
+ 		- stby nie
+ 		- blokada LDMOS aktywna (niski)
+ 		- dioda awaria
+ 		- komunikat o alarmie na wyświetlaczu
+
+ 	 - uwagi
+ 	 	 - linijka od mocy skacze
+ 	 	 	 - oscyloskop
+ 	 	 	 - może external Vref?
+ 	- spowolnienie przy spadku z dużego SWR?
+ 		- analiza
+
 	- gdy SWR na antenie > 3
 		- info na wyjściu D4 -> stan niski
 
@@ -83,7 +103,7 @@ extern uint8_t franklingothic_normal[];
  *
  */
 #define doPin_Czas_Petli	2	// pomiar czasu pętli głównej -> PE3 na sztywno
-//							3	wolny
+#define diPin_Termostat		3	// wejście alarmowe z termostatu
 #define doPin_SWR_ant		4	// informacja o przekroczeniu SWR (według wartości pwrForwardValue i pwrReturnValue) na wyjściu antenowym
 								// aktywny stan niski
 #define doPin_blokada       5	// aktywny stan wysoki - blokada głównie od temperatury
@@ -119,6 +139,8 @@ float aux1VoltageValue;
 float pa1AmperValue;
 float temperaturValue1;
 float temperaturValue2;
+int forwardValue;	// odczyt napięcia padającego z direct couplera
+int returnValue;	// odczyt napięcia odbitego z direct couplera
 
 // Define the boolValue variables
 bool pttValue = false;
@@ -128,26 +150,27 @@ bool stbyValue = true;
 bool ImaxValue;
 bool PmaxValue;
 bool SWRmaxValue;
+bool SWR3Value;
 bool SWRLPFmaxValue;
 bool SWR_ster_max;
 bool TemperaturaTranzystoraMaxValue;
+bool TermostatValue;
 
 bool errLedValue;
 
 #define inputFactorVoltage (5.0/1023.0)
+#ifdef SP2HYO
 #define pwrForwardFactor (inputFactorVoltage * (320.0/5.0))
-#define pwrReturnFactor (inputFactorVoltage * (200.0/5.0))
+#define pwrReturnFactor (inputFactorVoltage * (320.0/5.0))
+#endif
+#ifdef SP3JDZ
+#define pwrForwardFactor (inputFactorVoltage * (222.0/5.0))
+#define pwrReturnFactor (inputFactorVoltage * (222.0/5.0))
+#endif
 #define drainVoltageFactor (inputFactorVoltage * (60.0/5.0))// 5V Input = 60V PA
 #define aux1VoltageFactor (inputFactorVoltage * (30.0/5.0)) // 5V Input = 30V PA
 #define aux2VoltageFactor (inputFactorVoltage * (15.0/5.0)) // 5V Input = 15V PA
-//#define pa1AmperFactor (inputFactorVoltage * (62.5/2.5))    // 40mV/A
 #define pa1AmperFactor (inputFactorVoltage * (65.0/5.0))    // 1k Ris w BTS50085
-//#define pa1AmperOffset (1023/5 * 2.505)                     // 2.5V z czujnika Hallla
-//#define pa1AmperOffset (0.0)                     // 0.0V	- pomiar z BTS50085 - od zera
-//#define pa2AmperFactor (inputFactorVoltage * (62.5/2.5))    // 40mV/A
-//#define pa2AmperOffset (1023/5 * 2.505)                     // 2.5V
-//#define temperaturFactor (inputFactorVoltage * (100.0/5.0)) // 5V = 100°C
-
 // zmienne na potrzeby pomiaru temperatury
 float Uref = 5.0;			// napięcie zasilające dzielnik pomiarowy temperatury
 float Vref = 5.0;			// napięcie odniesienia dla ADC
@@ -204,10 +227,65 @@ int drawWidgetIndex;
 bool toogle500ms;
 
 #define cycleTime        30
-
+// SWR:
 float pwrForwardReturnRatio;
-float swrValue;
+float swrValue = 1.0;
+// SWR by UHSDR
+// SWR and RF power meter public
+typedef struct SWRMeter
+{
+    float fwd_calc;         // forward power readings in A/D units
+    float rev_calc;         // reverse power readings in A/D units
+    float fwd_pwr;          // forward power in watts current measurement
+    float rev_pwr;          // reverse power in watts current measurement
+    float fwd_pwr_avg;      // forward power in watts averaged
+    float rev_pwr_avg;      // reverse power in watts averaged
 
+    float fwd_dbm;          // forward power in dBm
+    float rev_dbm;          // reverse power in dBm
+    float vswr;             // vswr
+    float vswr_dampened;        // dampened VSWR reading
+    bool  pwr_meter_disp;       // TRUE if numerical FWD/REV power metering (in milliwatts) is to be displayed
+    bool  pwr_meter_was_disp;   // TRUE if numerical FWD/REV power metering WAS displayed (used to clear it)
+    byte   p_curr;         // count used to update power meter
+    byte   sensor_null;        // used to null out the sensor offset voltage
+
+    uint8_t coupling_calc[BAND_NUM];
+
+    bool high_vswr_detected;
+
+} SWRMeter;
+#define SWR_SAMPLES_CNT             5//10
+#define SWR_ADC_VOLT_REFERENCE          3.3     // NOMINAL A/D reference voltage.
+//
+// coefficients for very low power (<75 milliwatt) power levels.  Do NOT use this above approx. 0.07 volts input!
+//
+#define LOW_RF_PWR_COEFF_A          -0.0338205168744131     // constant (offset)
+#define LOW_RF_PWR_COEFF_B          5.02584652062682        // "b" coefficient (for x)
+#define LOW_RF_PWR_COEFF_C          -106.610490958242       // "c" coefficient (for x^2)
+#define LOW_RF_PWR_COEFF_D          853.156505329744        // "d" coefficient (for x^3)
+//
+// coefficients for higher power levels (>50 milliwatts).  This is actually good down to 25 milliwatts or so.
+//
+#define HIGH_RF_PWR_COEFF_A         0.01209 //0.0120972709513557        // constant (offset)
+#define HIGH_RF_PWR_COEFF_B         0.8334  //0.833438917330908     // "b" coefficient (for x)
+#define HIGH_RF_PWR_COEFF_C             1.569   //1.56930042559198      // "c" coefficient (for x^2)
+
+#define LOW_POWER_CALC_THRESHOLD        0.05    // voltage from sensor below which we use the "low power" calculations, above
+#define SWR_CAL_MIN             75
+#define SWR_CAL_MAX             150
+#define SWR_CAL_DEFAULT             100
+//
+#define SENSOR_NULL_MIN             75
+#define SENSOR_NULL_MAX             125
+#define SENSOR_NULL_DEFAULT         100
+#define	SWR_COUPLING_MIN					50
+#define	SWR_COUPLING_MAX					150
+#define	SWR_COUPLING_DEFAULT				100
+
+SWRMeter                    swrm;
+
+// end SWR by UHSDR
 class PushButton
 {
 	int _xPos, _yPos, _height, _width;
@@ -722,7 +800,14 @@ InfoBox msgBox("", "", 20, 420, 32, 760, 0, 0, vgaValueColor, vgaBackgroundColor
 InfoBox txRxBox("", "", 645, 340, 72, 135, 0, 0, vgaValueColor, vgaBackgroundColor, GroteskBold32x64);
 
 // title, unit, xPos, yPos, height, width, minValue, maxValue, warnValue1, warnValue2, colorBar, colorBack, noOffHelplines
-DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 2500, 750, 1750, vgaBarColor, vgaBackgroundColor, 10);
+//DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 2500, 750, 1750, vgaBarColor, vgaBackgroundColor, 10);
+#ifdef SP2HYO
+DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 1250, 375, 875, vgaBarColor, vgaBackgroundColor, 10);
+#endif
+#ifdef SP3JDZ
+DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 500, 150, 350, vgaBarColor, vgaBackgroundColor, 10);
+#endif
+
 DisplayBar swrBar("SWR", "", 20, 226, 80, 760, 1, 5, 3, 4, vgaBarColor, vgaBackgroundColor, 16);
 
 PushButton Down(20, 20, 72, 165);
@@ -731,7 +816,10 @@ PushButton Up(185, 20, 72, 165);
 
 float getTemperatura(uint8_t pin, int Rf);
 void read_inputs();
-float calc_SWR(float forward, float ref);
+float calc_SWR(int forward, int ref);
+// SWR by UHSDR
+bool UpdatePowerAndVSWR();
+static void PowerFromADCValue(float inval, float sensor_null, float coupling_calc,volatile float* pwr_ptr, volatile float* dbm_ptr);
 
 void setup()
 {
@@ -778,6 +866,7 @@ void setup()
 #ifdef CZAS_PETLI
 	pinMode(doPin_Czas_Petli, OUTPUT);
 #endif
+	pinMode(diPin_Termostat, INPUT_PULLUP);
 	pinMode(doPin_SWR_ant, OUTPUT);
 	digitalWrite(doPin_SWR_ant, HIGH);
 	pinMode(doPin_blokada, OUTPUT);
@@ -856,8 +945,11 @@ void setup()
 	// przeniosłem do setupu
 	read_inputs();
 	pwrBar.setValue(pwrForwardValue, false);
-	swrValue = calc_SWR(pwrForwardValue, pwrReturnValue);
+	/*
+	 * nie sprawdzam SWR po włączeniu - wystarczy sprawdzić, czy jest moc
+	swrValue = calc_SWR(forwardValue, returnValue);
 	swrBar.setValue(swrValue, false);
+	 */
 	drainVoltageBox.setFloat(drainVoltageValue, 1, 4, false);
 	aux1VoltageBox.setFloat(aux1VoltageValue, 1, 4, false);
 	pa1AmperBox.setFloat(pa1AmperValue, 1, 4, false);
@@ -916,11 +1008,35 @@ void setup()
 	{
 		errorString = "Startup error: Protector transistor temp max detected";
 	}
+	else if (TermostatValue == true)
+	{
+		errorString = "Startup error: Termostat on";
+	}
 	else
 	{
 		genOutputEnable = true;
 		infoString = "Startup completed.";
 	}
+	// SWR by UHSDR
+	// SWR meter init
+	swrm.p_curr				= 0;
+	swrm.fwd_calc			= 0;
+	swrm.rev_calc			= 0;
+	swrm.fwd_pwr			= 0;
+	swrm.rev_pwr			= 0;
+	swrm.fwd_dbm			= 0;
+	swrm.rev_dbm			= 0;
+	swrm.vswr			 	= 0;
+	swrm.sensor_null		= SENSOR_NULL_DEFAULT;
+	{
+		int idx;
+		for (idx = 0; idx < BAND_NUM; idx++)
+		{
+			swrm.coupling_calc[idx]    = SWR_COUPLING_DEFAULT;
+		}
+	}
+	swrm.pwr_meter_disp		= 0;	// Display of numerical FWD/REV power metering off by default
+	swrm.pwr_meter_was_disp = 0;	// Used to indicate if FWD/REV numerical power metering WAS displayed
 }
 
 void loop()
@@ -976,11 +1092,23 @@ void loop()
 	// Set display values. The widgets monitors the values and output an errorString
 
 	pwrBar.setValue(pwrForwardValue, drawWidgetIndex == 1);
-	swrValue = calc_SWR(pwrForwardValue, pwrReturnValue);
-	if (swrValue > thresholdSWR)
+	// SWR by UHSDR
+	if (UpdatePowerAndVSWR())
 	{
-		digitalWrite(doPin_SWR_ant, LOW);
+		swrValue = swrm.vswr;
+		if (swrValue > thresholdSWR)
+		{
+			// blokada od wysokiego SWR anteny na razie wyłączona
+			 digitalWrite(doPin_SWR_ant, LOW);
+			 SWR3Value = true;
+		}
+		else
+		{
+			//digitalWrite(doPin_SWR_ant, LOW);
+			SWR3Value = false;
+		}
 	}
+	//swrValue = calc_SWR(forwardValue, returnValue);
 	swrBar.setValue(swrValue, drawWidgetIndex == 3);
 
 	drainVoltageBox.setFloat(drainVoltageValue, 1, 4, drawWidgetIndex == 5);
@@ -1031,6 +1159,10 @@ void loop()
 	{
 		errorString = "Error: Protector Imax detected";
 	}
+	if (TermostatValue == true)
+	{
+		errorString = "Error: Termostat on";
+	}
 	if (PmaxValue == true)
 	{
 		errorString = "Error: Protector Pmax detected";
@@ -1048,10 +1180,17 @@ void loop()
 	{
 		errorString = "Error: Protector input SWR max detected";
 	}
-
 	if (TemperaturaTranzystoraMaxValue == true)
 	{
 		errorString = "Error: Protector transistor temp max detected";
+	}
+	if (SWR3Value == true)
+	{
+		errorString = "Error: dangerous SWR detected";
+	}
+	else if (errorString == "")
+	{
+		digitalWrite(doPin_SWR_ant, HIGH);
 	}
 
 	//-----------------------------------------------------------------------------
@@ -1149,7 +1288,7 @@ void loop()
 
 	//-----------------------------------------------------------------------------
 	// Signal evaluation
-	if (stbyValue or TemperaturaTranzystoraMaxValue or PmaxValue or SWRmaxValue or SWRLPFmaxValue or SWR_ster_max or ImaxValue or not genOutputEnable)
+	if (stbyValue or TemperaturaTranzystoraMaxValue or PmaxValue or SWRmaxValue or SWRLPFmaxValue or SWR_ster_max or ImaxValue or TermostatValue or not genOutputEnable)
 	{
 		txRxBox.setColorValue(vgaBackgroundColor);
 		txRxBox.setColorBack(VGA_YELLOW);
@@ -1158,7 +1297,7 @@ void loop()
 		{
 			digitalWrite(doPin_blokada, HIGH);
 		}
-		if (not (TemperaturaTranzystoraMaxValue or PmaxValue or SWRmaxValue or SWRLPFmaxValue or SWR_ster_max or ImaxValue or not genOutputEnable))
+		if (not (TemperaturaTranzystoraMaxValue or PmaxValue or SWRmaxValue or SWRLPFmaxValue or SWR_ster_max or ImaxValue or TermostatValue or not genOutputEnable))
 		{
 			digitalWrite(doPin_blokada, LOW);
 		}
@@ -1295,7 +1434,7 @@ void loop()
 		}
 	}
 
-	if ((ImaxValue or PmaxValue or SWRmaxValue or SWRLPFmaxValue or SWR_ster_max or TemperaturaTranzystoraMaxValue or not genOutputEnable)  and toogle500ms)
+	if ((ImaxValue or TermostatValue or PmaxValue or SWRmaxValue or SWRLPFmaxValue or SWR_ster_max or TemperaturaTranzystoraMaxValue or not genOutputEnable)  and toogle500ms)
 	{
 		digitalWrite(doPin_errLED, LOW);
 	}
@@ -1381,8 +1520,11 @@ void read_inputs()
 {
 	//-----------------------------------------------------------------------------
 	// Read all inputs
-	pwrForwardValue = sq(analogRead(aiPin_pwrForward) * pwrForwardFactor) / 50;
-	pwrReturnValue = analogRead(aiPin_pwrReturn) * pwrReturnFactor;
+	forwardValue = analogRead(aiPin_pwrForward);
+	pwrForwardValue = sq(forwardValue * pwrForwardFactor) / 50;
+	//pwrReturnValue = analogRead(aiPin_pwrReturn) * pwrReturnFactor; -> błąd!
+	returnValue = analogRead(aiPin_pwrReturn);
+	pwrReturnValue = sq(returnValue * pwrReturnFactor)/50;
 	drainVoltageValue = analogRead(aiPin_drainVoltage) * drainVoltageFactor;
 	aux1VoltageValue = analogRead(aiPin_aux1Voltage) * aux1VoltageFactor;
 	pa1AmperValue = analogRead(aiPin_pa1Amper)*pa1AmperFactor;
@@ -1395,20 +1537,133 @@ void read_inputs()
 	PmaxValue = not digitalRead(diPin_Pmax);				// aktywny stan niski
 	SWRmaxValue = not digitalRead(diPin_SWRmax);			// aktywny stan niski
 	SWRLPFmaxValue = not digitalRead(diPin_SWR_LPF_max);	// aktywny stan niski
-	SWR_ster_max = not digitalRead(diPin_SWR_ster_max);
+	SWR_ster_max = not digitalRead(diPin_SWR_ster_max);		// aktywny stan niski
+	TermostatValue = not digitalRead(diPin_Termostat);		// aktywny stan niski
 }
 
-float calc_SWR(float forward, float ref)
+float calc_SWR(int forward, int ref)
 {
 	float swr;
 	if (ref > 0)
 	{
-		forward = pwrForwardValue / ref;
-		swr = fabs((1.0 + sqrt(forward)) / (1.0 - sqrt(forward)));
+		if (forward > ref)
+		{
+			swr = (float) (forward + ref) / (forward - ref);
+			if (swr > 9.9)
+			{
+				swr = 9.9;
+			}
+		}
+		else
+		{
+			swr = 9.9;
+		}
 	}
 	else
 	{
 		swr = 1;
 	}
 	return swr;
+}
+
+// SWR by UHSDR
+bool UpdatePowerAndVSWR()
+{
+	uint16_t val_p, val_s = 0;
+	float sensor_null, coupling_calc;
+	bool retval = false;
+
+	// Collect samples
+	if (swrm.p_curr < SWR_SAMPLES_CNT)
+	{
+		// Get next sample
+		//forwardValue = analogRead(aiPin_pwrForward);
+		val_p = forwardValue;
+		//returnValue = analogRead(aiPin_pwrReturn);
+		val_s = returnValue;
+		// Add to accumulator to average A/D values
+		swrm.fwd_calc += val_p;
+		swrm.rev_calc += val_s;
+		swrm.p_curr++;
+	}
+	else
+	{
+		// obtain and calculate power meter coupling coefficients
+		coupling_calc = (swrm.coupling_calc[bandIdx] - 100.0) / 10.0;
+		// offset to zero and rescale to 0.1 dB/unit
+
+		sensor_null = (swrm.sensor_null - 100.0) / 1000;
+		// get calibration factor
+		// offset it so that 100 = 0
+		// divide so that each step = 1 millivolt
+
+		// Compute average values
+		swrm.fwd_pwr = sq((swrm.fwd_calc / SWR_SAMPLES_CNT) * pwrForwardFactor) / 50;
+		swrm.rev_pwr = sq((swrm.rev_calc / SWR_SAMPLES_CNT) * pwrReturnFactor) / 50;
+
+		/*
+		PowerFromADCValue(swrm.fwd_calc / SWR_SAMPLES_CNT, sensor_null,
+				coupling_calc, &swrm.fwd_pwr, &swrm.fwd_dbm);
+		PowerFromADCValue(swrm.rev_calc / SWR_SAMPLES_CNT, sensor_null,
+				coupling_calc, &swrm.rev_pwr, &swrm.rev_dbm);
+*/
+		// Reset accumulators and variables for power measurements
+		swrm.p_curr = 0;
+		swrm.fwd_calc = 0;
+		swrm.rev_calc = 0;
+		// Calculate VSWR from power readings
+
+		swrm.vswr = (1 + sqrtf(swrm.rev_pwr / swrm.fwd_pwr))
+				/ (1 - sqrtf(swrm.rev_pwr / swrm.fwd_pwr));
+
+		/*
+		 // Perform VSWR protection iff threshold is > 1 AND enough forward power exists for a valid calculation
+		 if ( ts.vswr_protection_threshold > 1 && swrm.fwd_pwr >= SWR_MIN_CALC_POWER)
+		 {
+		 if ( swrm.vswr > ts.vswr_protection_threshold )
+		 {
+		 RadioManagement_DisablePaBias ( );
+		 swrm.high_vswr_detected = true;
+
+		 // change output power to "PA_LEVEL_0_5W" when VSWR protection is active
+		 RadioManagement_SetPowerLevel ( RadioManagement_GetBand ( df.tune_new), PA_LEVEL_MINIMAL );
+		 }
+		 }
+		 */
+		retval = true;
+	}
+	return retval;
+}
+
+static void PowerFromADCValue(float inval, float sensor_null,
+		float coupling_calc, volatile float *pwr_ptr, volatile float *dbm_ptr)
+{
+	float pwr;
+	const float val = sensor_null + ((inval * SWR_ADC_VOLT_REFERENCE) / 1023);
+	// get nominal A/D reference voltage
+	// divide by full-scale A/D count to yield actual input voltage from detector
+	// offset result
+
+	if (val <= LOW_POWER_CALC_THRESHOLD) // is this low power as evidenced by low voltage from the sensor?
+	{
+		pwr = LOW_RF_PWR_COEFF_A + (LOW_RF_PWR_COEFF_B * val)
+				+ (LOW_RF_PWR_COEFF_C * (val * val))
+				+ (LOW_RF_PWR_COEFF_D * powf(val, 3));
+	}
+	else            // it is high power
+	{
+		pwr = HIGH_RF_PWR_COEFF_A + (HIGH_RF_PWR_COEFF_B * val)
+				+ (HIGH_RF_PWR_COEFF_C * (val * val));
+	}
+	// calculate forward and reverse RF power in watts (p = a + bx + cx^2) for high power ;-) (above 50-60 mW)
+
+	if (pwr < 0) // prevent negative power readings from emerging from the equations - particularly at zero output power
+	{
+		pwr = 0;
+	}
+
+	const float dbm = (10 * (log10f(pwr))) + 30 + coupling_calc;
+	*dbm_ptr = dbm;
+	//*pwr_ptr = pow10f(dbm / 10) / 1000;
+	*pwr_ptr = pow(10.0, dbm / 10) / 1000;
 }
