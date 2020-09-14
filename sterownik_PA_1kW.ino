@@ -4,6 +4,8 @@
 #include <SoftwareSerial.h>
 #include <UTouch.h>
 
+#include "sterownik_PA_1kW.h"
+
 /*
  Na bazie sterownika DC5ME:
  	 - wyświetlacz z buydisplay model ER-TFTM050-5 5 cali z kontrolerem SSD1963 i dotykiem rezystancyjnym (resistive touch);
@@ -21,6 +23,20 @@
  Całkowity pobór prądu z 5V (wyświetlacz, shield, arduino mega 2560) około 400mA.
 
  ToDo
+ 	 - obsługa/brak obsługi kodu banddata z poza LPFów
+ 	 	 - i wyłączanie obsługi pasma 6m (#define JEST_6m)
+ 	 	 - blokada
+
+ 	- zrobione! D3 wejście: stan niski kolejny alarm -> od termostatu; obsługa jak inne
+
+ 	 - uwagi
+ 	 	 - linijka od mocy skacze
+ 	 	 	 - oscyloskop
+ 	 	 	 - może external Vref?
+ 	 	 	 	 - kupiony MCP1541 napięcie odniesienia 4,096V 1% -> Vref
+ 	- spowolnienie przy spadku z dużego SWR?
+ 		- analiza
+
 	- gdy SWR na antenie > 3
 		- info na wyjściu D4 -> stan niski
 
@@ -83,8 +99,8 @@ extern uint8_t franklingothic_normal[];
  *
  */
 #define doPin_Czas_Petli	2	// pomiar czasu pętli głównej -> PE3 na sztywno
-//							3	wolny
-#define doPin_SWR_ant		4	// informacja o przekroczeniu SWR (według wartości pwrForwardValue i pwrReturnValue) na wyjściu antenowym
+#define diPin_Termostat		3	// wejście alarmowe z termostatu
+#define doPin_SWR_ant		4	// informacja o przekroczeniu SWR (według wartości obliczonej na podstawie forwardValue i returnValue) na wyjściu antenowym
 								// aktywny stan niski
 #define doPin_blokada       5	// aktywny stan wysoki - blokada głównie od temperatury
 #define doPin_errLED      	6	// dioda wystąpienia jakiegoś błędu - aktywny stan wysoki - jak jest błąd - stan wysoki i mruga
@@ -119,6 +135,16 @@ float aux1VoltageValue;
 float pa1AmperValue;
 float temperaturValue1;
 float temperaturValue2;
+int forwardValue;	// odczyt napięcia padającego z direct couplera
+int forwardValueAvg;	// średnia z napięcia padającego z direct couplera
+int returnValue;	// odczyt napięcia odbitego z direct couplera
+int returnValueAvg;	// średnia napięcia odbitego z direct couplera
+int fwd_calc = 0;		// sumaryczny odczyt
+int rev_calc = 0;
+int p_curr = 0;			// licznik odczytów
+float fwd_pwr;
+float rev_pwr;
+#define SWR_SAMPLES_CNT             5
 
 // Define the boolValue variables
 bool pttValue = false;
@@ -128,15 +154,23 @@ bool stbyValue = true;
 bool ImaxValue;
 bool PmaxValue;
 bool SWRmaxValue;
+bool SWR3Value;
 bool SWRLPFmaxValue;
 bool SWR_ster_max;
 bool TemperaturaTranzystoraMaxValue;
+bool TermostatValue;
 
 bool errLedValue;
 
 #define inputFactorVoltage (5.0/1023.0)
+#ifdef SP2HYO
+#define pwrForwardFactor (inputFactorVoltage * (320.0/5.0))
+#define pwrReturnFactor (inputFactorVoltage * (320.0/5.0))
+#endif
+#ifdef SP3JDZ
 #define pwrForwardFactor (inputFactorVoltage * (222.0/5.0))
 #define pwrReturnFactor (inputFactorVoltage * (222.0/5.0))
+#endif
 #define drainVoltageFactor (inputFactorVoltage * (60.0/5.0))// 5V Input = 60V PA
 #define aux1VoltageFactor (inputFactorVoltage * (30.0/5.0)) // 5V Input = 30V PA
 #define aux2VoltageFactor (inputFactorVoltage * (15.0/5.0)) // 5V Input = 15V PA
@@ -723,7 +757,12 @@ InfoBox txRxBox("", "", 645, 340, 72, 135, 0, 0, vgaValueColor, vgaBackgroundCol
 
 // title, unit, xPos, yPos, height, width, minValue, maxValue, warnValue1, warnValue2, colorBar, colorBack, noOffHelplines
 //DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 2500, 750, 1750, vgaBarColor, vgaBackgroundColor, 10);
+#ifdef SP2HYO
+DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 1250, 375, 875, vgaBarColor, vgaBackgroundColor, 10);
+#endif
+#ifdef SP3JDZ
 DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 500, 150, 350, vgaBarColor, vgaBackgroundColor, 10);
+#endif
 DisplayBar swrBar("SWR", "", 20, 226, 80, 760, 1, 5, 3, 4, vgaBarColor, vgaBackgroundColor, 16);
 
 PushButton Down(20, 20, 72, 165);
@@ -732,8 +771,9 @@ PushButton Up(185, 20, 72, 165);
 
 float getTemperatura(uint8_t pin, int Rf);
 void read_inputs();
-float calc_SWR(float forward, float ref);
+float calc_SWR(int forward, int ref);
 bool UpdatePowerAndVSWR();
+
 
 void setup()
 {
@@ -780,6 +820,7 @@ void setup()
 #ifdef CZAS_PETLI
 	pinMode(doPin_Czas_Petli, OUTPUT);
 #endif
+	pinMode(diPin_Termostat, INPUT_PULLUP);
 	pinMode(doPin_SWR_ant, OUTPUT);
 	digitalWrite(doPin_SWR_ant, HIGH);
 	pinMode(doPin_blokada, OUTPUT);
@@ -826,7 +867,7 @@ void setup()
 	//myGLCD.print("DJ8QP ", RIGHT, 20);
 	//myGLCD.print("DC5ME ", RIGHT, 40);
 	myGLCD.setFont(SmallFont);
-	myGLCD.print("V1.9.1  ", RIGHT, 60);
+	myGLCD.print("V1.9.2  ", RIGHT, 60);
 
 	// Init the grafic objects
 	modeBox.init();
@@ -858,8 +899,8 @@ void setup()
 	// przeniosłem do setupu
 	read_inputs();
 	pwrBar.setValue(pwrForwardValue, false);
-	swrValue = calc_SWR(pwrForwardValue, pwrReturnValue);
-	swrBar.setValue(swrValue, false);
+	//swrValue = calc_SWR(pwrForwardValue, pwrReturnValue);
+	//swrBar.setValue(swrValue, false);
 	drainVoltageBox.setFloat(drainVoltageValue, 1, 4, false);
 	aux1VoltageBox.setFloat(aux1VoltageValue, 1, 4, false);
 	pa1AmperBox.setFloat(pa1AmperValue, 1, 4, false);
@@ -906,10 +947,6 @@ void setup()
 	{
 		errorString = "Startup error: Protector Pmax detected";
 	}
-	else if (SWRmaxValue == true)
-	{
-		errorString = "Startup error: Protector SWR max detected";
-	}
 	else if (SWRLPFmaxValue == true)
 	{
 		errorString = "Startup error: Protector SWR LPF max detected";
@@ -917,6 +954,10 @@ void setup()
 	else if (TemperaturaTranzystoraMaxValue == true)
 	{
 		errorString = "Startup error: Protector transistor temp max detected";
+	}
+	else if (TermostatValue == true)
+	{
+		errorString = "Startup error: Termostat on";
 	}
 	else
 	{
@@ -978,12 +1019,21 @@ void loop()
 	// Set display values. The widgets monitors the values and output an errorString
 
 	pwrBar.setValue(pwrForwardValue, drawWidgetIndex == 1);
-	swrValue = calc_SWR(pwrForwardValue, pwrReturnValue);
-	if (swrValue > thresholdSWR)
+	if (UpdatePowerAndVSWR())
 	{
-		digitalWrite(doPin_SWR_ant, LOW);
+		swrValue = calc_SWR(forwardValueAvg, returnValueAvg);
+		if (swrValue > thresholdSWR)
+		{
+			//digitalWrite(doPin_SWR_ant, LOW);???
+			 SWR3Value = true;
+		}
+		else
+		{
+			//digitalWrite(doPin_SWR_ant, HIGH); ???
+			SWR3Value = false;
+		}
+		swrBar.setValue(swrValue, drawWidgetIndex == 3);
 	}
-	swrBar.setValue(swrValue, drawWidgetIndex == 3);
 
 	drainVoltageBox.setFloat(drainVoltageValue, 1, 4, drawWidgetIndex == 5);
 	aux1VoltageBox.setFloat(aux1VoltageValue, 1, 4, drawWidgetIndex == 6);
@@ -1033,6 +1083,10 @@ void loop()
 	{
 		errorString = "Error: Protector Imax detected";
 	}
+	if (TermostatValue == true)
+	{
+		errorString = "Error: Termostat on";
+	}
 	if (PmaxValue == true)
 	{
 		errorString = "Error: Protector Pmax detected";
@@ -1054,6 +1108,14 @@ void loop()
 	if (TemperaturaTranzystoraMaxValue == true)
 	{
 		errorString = "Error: Protector transistor temp max detected";
+	}
+	if (SWR3Value == true)
+	{
+		errorString = "Error: dangerous SWR detected";
+	}
+	else if (errorString == "")
+	{
+		digitalWrite(doPin_SWR_ant, HIGH);
 	}
 
 	//-----------------------------------------------------------------------------
@@ -1151,7 +1213,7 @@ void loop()
 
 	//-----------------------------------------------------------------------------
 	// Signal evaluation
-	if (stbyValue or TemperaturaTranzystoraMaxValue or PmaxValue or SWRmaxValue or SWRLPFmaxValue or SWR_ster_max or ImaxValue or not genOutputEnable)
+	if (stbyValue or TemperaturaTranzystoraMaxValue or PmaxValue or SWRmaxValue or SWRLPFmaxValue or SWR_ster_max or ImaxValue or TermostatValue or not genOutputEnable)
 	{
 		txRxBox.setColorValue(vgaBackgroundColor);
 		txRxBox.setColorBack(VGA_YELLOW);
@@ -1160,7 +1222,7 @@ void loop()
 		{
 			digitalWrite(doPin_blokada, HIGH);
 		}
-		if (not (TemperaturaTranzystoraMaxValue or PmaxValue or SWRmaxValue or SWRLPFmaxValue or SWR_ster_max or ImaxValue or not genOutputEnable))
+		if (not (TemperaturaTranzystoraMaxValue or PmaxValue or SWRmaxValue or SWRLPFmaxValue or SWR_ster_max or ImaxValue or TermostatValue or not genOutputEnable))
 		{
 			digitalWrite(doPin_blokada, LOW);
 		}
@@ -1297,7 +1359,7 @@ void loop()
 		}
 	}
 
-	if ((ImaxValue or PmaxValue or SWRmaxValue or SWRLPFmaxValue or SWR_ster_max or TemperaturaTranzystoraMaxValue or not genOutputEnable)  and toogle500ms)
+	if ((ImaxValue or TermostatValue or PmaxValue or SWRmaxValue or SWRLPFmaxValue or SWR_ster_max or TemperaturaTranzystoraMaxValue or not genOutputEnable)  and toogle500ms)
 	{
 		digitalWrite(doPin_errLED, LOW);
 	}
@@ -1383,9 +1445,10 @@ void read_inputs()
 {
 	//-----------------------------------------------------------------------------
 	// Read all inputs
-	pwrForwardValue = sq(analogRead(aiPin_pwrForward) * pwrForwardFactor) / 50;
-	//pwrReturnValue = analogRead(aiPin_pwrReturn) * pwrReturnFactor;
-	pwrReturnValue = sq(analogRead(aiPin_pwrReturn) * pwrReturnFactor) / 50;
+	forwardValue = analogRead(aiPin_pwrForward);
+	pwrForwardValue = sq(forwardValue * pwrForwardFactor) / 50;
+	returnValue = analogRead(aiPin_pwrReturn);
+	pwrReturnValue = sq(returnValue * pwrReturnFactor) / 50;
 	drainVoltageValue = analogRead(aiPin_drainVoltage) * drainVoltageFactor;
 	aux1VoltageValue = analogRead(aiPin_aux1Voltage) * aux1VoltageFactor;
 	pa1AmperValue = analogRead(aiPin_pa1Amper)*pa1AmperFactor;
@@ -1398,17 +1461,42 @@ void read_inputs()
 	PmaxValue = not digitalRead(diPin_Pmax);				// aktywny stan niski
 	SWRmaxValue = not digitalRead(diPin_SWRmax);			// aktywny stan niski
 	SWRLPFmaxValue = not digitalRead(diPin_SWR_LPF_max);	// aktywny stan niski
-	SWR_ster_max = not digitalRead(diPin_SWR_ster_max);
+	SWR_ster_max = not digitalRead(diPin_SWR_ster_max);		// aktywny stan niski
+	TermostatValue = not digitalRead(diPin_Termostat);		// aktywny stan niski
 }
-
+float calc_SWR(int forward, int ref)
+{
+	float swr;
+	if (forward > 0)
+	{
+		if (forward <= ref)
+		{
+			swr = 9.99;
+		}
+		else
+		{
+			swr = (float)(forward + ref)/(forward - ref);
+			if (swr > 9.99)
+			{
+				swr = 9.99;
+			}
+		}
+	}
+	else
+	{
+		swr = 1;
+	}
+	return swr;
+}
 /*
 float calc_SWR(float forward, float ref)
 {
 	float swr;
-	if (ref > 0)
+	float stosunek;
+	if (forward > 0)
 	{
-		forward = pwrForwardValue / ref;
-		swr = fabs((1.0 + sqrt(forward)) / (1.0 - sqrt(forward)));
+		stosunek = ref/forward;
+		swr = fabs((1.0 + sqrtf(stosunek)) / (1.0 - sqrtf(stosunek)));
 	}
 	else
 	{
@@ -1417,18 +1505,59 @@ float calc_SWR(float forward, float ref)
 	return swr;
 }
 */
-float calc_SWR(float forward, float ref)
+bool UpdatePowerAndVSWR()
 {
-	float swr;
-	float stosunek;
-	if (forward > 0)
+	bool retval = false;
+
+	// Collect samples
+	if (p_curr < SWR_SAMPLES_CNT)
 	{
-		stosunek = ref/forward;
-		swr = fabs((1.0 + sqrt(stosunek)) / (1.0 - sqrt(stosunek)));
+		fwd_calc += forwardValue;
+		rev_calc += returnValue;
+		p_curr++;
 	}
 	else
 	{
-		swr = 1;
+		// get calibration factor
+		// offset it so that 100 = 0
+		// divide so that each step = 1 millivolt
+
+		// Compute average values
+		forwardValueAvg = fwd_calc / SWR_SAMPLES_CNT;
+		//fwd_pwr = sq((forwardValueAvg) * pwrForwardFactor) / 50; NA RAZIE niepotrzebne
+		returnValueAvg = rev_calc / SWR_SAMPLES_CNT;
+		//rev_pwr = sq((returnValueAvg) * pwrReturnFactor) / 50;
+
+		/*
+		PowerFromADCValue(swrm.fwd_calc / SWR_SAMPLES_CNT, sensor_null,
+				coupling_calc, &swrm.fwd_pwr, &swrm.fwd_dbm);
+		PowerFromADCValue(swrm.rev_calc / SWR_SAMPLES_CNT, sensor_null,
+				coupling_calc, &swrm.rev_pwr, &swrm.rev_dbm);
+*/
+		// Reset accumulators and variables for power measurements
+		p_curr = 0;
+		fwd_calc = 0;
+		rev_calc = 0;
+		// Calculate VSWR from power readings
+/*
+		swrm.vswr = (1 + sqrtf(swrm.rev_pwr / swrm.fwd_pwr))
+				/ (1 - sqrtf(swrm.rev_pwr / swrm.fwd_pwr));
+*/
+		/*
+		 // Perform VSWR protection iff threshold is > 1 AND enough forward power exists for a valid calculation
+		 if ( ts.vswr_protection_threshold > 1 && swrm.fwd_pwr >= SWR_MIN_CALC_POWER)
+		 {
+		 if ( swrm.vswr > ts.vswr_protection_threshold )
+		 {
+		 RadioManagement_DisablePaBias ( );
+		 swrm.high_vswr_detected = true;
+
+		 // change output power to "PA_LEVEL_0_5W" when VSWR protection is active
+		 RadioManagement_SetPowerLevel ( RadioManagement_GetBand ( df.tune_new), PA_LEVEL_MINIMAL );
+		 }
+		 }
+		 */
+		retval = true;
 	}
-	return swr;
+	return retval;
 }
