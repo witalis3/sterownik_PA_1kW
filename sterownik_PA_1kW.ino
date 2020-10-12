@@ -24,7 +24,7 @@
 
  ToDo
  	 - ver. 1.9.5 trzeci termistor
- 	 	 - znika jednostka po init()...
+ 	 	 - znika jednostka po init()
  	 - ver. 1.9.4 zerowanie mocy szczytowej po zmianie pasma (ręcznej lub auto)
 
  	 - drugi termostat?
@@ -1041,15 +1041,12 @@ void loop()
 
 	//-----------------------------------------------------------------------------
 	// Set display values. The widgets monitors the values and output an errorString
+	pwrBar.setValue(pwrForwardValue, drawWidgetIndex == 1);
 	//if (UpdatePowerAndVSWR())
 	if (true)
 	{
-		pwrForwardValue = sq(forwardValue * pwrForwardFactor) / 50;
-		pwrReturnValue = sq(returnValue * pwrReturnFactor)/50;
-		pwrBar.setValue(pwrForwardValue, drawWidgetIndex == 1);
 
 		swrValue = calc_SWR(forwardValue, returnValue);
-		swrBar.setValue(swrValue, drawWidgetIndex == 3);
 		if (swrValue > thresholdSWR)
 		{
 			digitalWrite(doPin_SWR_ant, LOW);
@@ -1482,7 +1479,9 @@ void read_inputs()
 	//-----------------------------------------------------------------------------
 	// Read all inputs
 	forwardValue = analogRead(aiPin_pwrForward);
+	pwrForwardValue = sq(forwardValue * pwrForwardFactor) / 50;
 	returnValue = analogRead(aiPin_pwrReturn);
+	pwrReturnValue = sq(returnValue * pwrReturnFactor) / 50;
 	drainVoltageValue = analogRead(aiPin_drainVoltage) * drainVoltageFactor;
 	aux1VoltageValue = analogRead(aiPin_aux1Voltage) * aux1VoltageFactor;
 	pa1AmperValue = analogRead(aiPin_pa1Amper)*pa1AmperFactor;
@@ -1543,16 +1542,14 @@ float calc_SWR(float forward, float ref)
 */
 bool UpdatePowerAndVSWR()
 {
-	//uint16_t val_p, val_s = 0;
 	bool retval = false;
 
 	// Collect samples
 	if (p_curr < SWR_SAMPLES_CNT)
 	{
-		// Add to accumulator to average A/D values
-		swrm.fwd_calc += forwardValue;
-		swrm.rev_calc += returnValue;
-		swrm.p_curr++;
+		fwd_calc += forwardValue;
+		rev_calc += returnValue;
+		p_curr++;
 	}
 	else
 	{
