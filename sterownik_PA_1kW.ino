@@ -23,6 +23,19 @@
  Całkowity pobór prądu z 5V (wyświetlacz, shield, arduino mega 2560) około 400mA.
 
  ToDo
+ 	 - ver. 1.9.5 trzeci termistor
+ 	 	 - znika jednostka po init()
+ 	 - ver. 1.9.4 zerowanie mocy szczytowej po zmianie pasma (ręcznej lub auto)
+
+ 	 - drugi termostat?
+ 	 	 - ew. na D2 (pomiar pętli na -> D18)
+ 	- spowolnienie przy spadku z dużego SWR?
+ 		- test
+ 			- wyłączyć 4% spadek przy value > valueMax (spadek wartości powyżej ValueMax natychmiastowy)
+ 			- max SWR = 5.0
+ 				- jest lepiej
+ 			- co gdy brak uśredniania
+ 				- jest nieźle
  	 - obsługa/brak obsługi kodu banddata z poza LPFów
  	 	 - i wyłączanie obsługi pasma 6m (#define JEST_6m)
  	 	 - blokada
@@ -34,8 +47,6 @@
  	 	 	 - oscyloskop
  	 	 	 - może external Vref?
  	 	 	 	 - kupiony MCP1541 napięcie odniesienia 4,096V 1% -> Vref
- 	- spowolnienie przy spadku z dużego SWR?
- 		- analiza
 
 	- gdy SWR na antenie > 3
 		- info na wyjściu D4 -> stan niski
@@ -84,7 +95,7 @@ extern uint8_t franklingothic_normal[];
 #define aiPin_pa1Amper     	6	// prąd drenu
 #define aiPin_temperatura1	7	// temperatura tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
 #define aiPin_temperatura2	8	// temperatura np. radiatora
-//							9	// wolne
+#define aiPin_temperatura3	9	// trzecia temperatura
 #define doPin_Band_A   64	// doPin band A; 	A10
 #define doPin_Band_B   65	// doPin band B; 	A11
 #define doPin_Band_C   66	// doPin band C; 	A12
@@ -135,6 +146,7 @@ float aux1VoltageValue;
 float pa1AmperValue;
 float temperaturValue1;
 float temperaturValue2;
+float temperaturValue3;
 int forwardValue;	// odczyt napięcia padającego z direct couplera
 int forwardValueAvg;	// średnia z napięcia padającego z direct couplera
 int returnValue;	// odczyt napięcia odbitego z direct couplera
@@ -144,7 +156,7 @@ int rev_calc = 0;
 int p_curr = 0;			// licznik odczytów
 float fwd_pwr;
 float rev_pwr;
-#define SWR_SAMPLES_CNT             5
+#define SWR_SAMPLES_CNT             1
 
 // Define the boolValue variables
 bool pttValue = false;
@@ -189,6 +201,7 @@ int beta = 3500;			// współczynnik beta termistora
 int R25 = 1800;				// rezystancja termistora w temperaturze 25C
 int Rf1 = 2677;				// rezystancja rezystora szeregowego z termistorem nr 1
 int Rf2 = 2685;				// rezystancja rezystora szeregowego z termistorem nr 2
+int Rf3 = 2700;				// rezystancja rezystora szeregowego z termistorem nr 3
 
 #define modeManualName "MANUALLY"
 #define modeAutoName   "AUTO"
@@ -234,7 +247,7 @@ int touchY = -1;
 
 unsigned long timeAtCycleStart, timeAtCycleEnd, timeStartMorseDownTime,
 		actualCycleTime, timeToogle500ms = 0;
-int drawWidgetIndex;
+int drawWidgetIndex = 1;
 bool toogle500ms;
 
 #define cycleTime        30
@@ -634,8 +647,12 @@ public:
 	{
 		// Set value and draw bar and info box
 		// Refresh the info box only all 4 updates
+		/*
+		 * spowolnione zmniejszanie tylko dla wartości z zakresu poniżej _valueMax; "wyskoki" są brane bez zmian
+		 * -> dodatkowy warunek value < _maxValue
+		 */
 
-		if (value < _valueOld)
+		if (value < _valueOld and value < _maxValue)
 		{
 			_delta = _valueOld - value;
 			if (_delta > _deltaMaxNeg)
@@ -748,6 +765,7 @@ InfoBox pa1AmperBox("PA 1", "A", 20, 380, 32, 125, 0, 32.0, vgaValueColor, vgaBa
 
 InfoBox temperaturBox1("", "`C", 320, 340, 32, 125, 10, 60, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
 InfoBox temperaturBox2("", "`C", 320, 380, 32, 125, 10, 60, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
+InfoBox temperaturBox3("", "`C", 170, 380, 32, 125, 10, 60, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
 
 
 InfoBox emptyBox("", "", 170, 380, 32, 125, 0.0, 0.0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
@@ -867,7 +885,7 @@ void setup()
 	//myGLCD.print("DJ8QP ", RIGHT, 20);
 	//myGLCD.print("DC5ME ", RIGHT, 40);
 	myGLCD.setFont(SmallFont);
-	myGLCD.print("V1.9.2  ", RIGHT, 60);
+	myGLCD.print("V1.9.4  ", RIGHT, 60);
 
 	// Init the grafic objects
 	modeBox.init();
@@ -884,6 +902,7 @@ void setup()
 	aux1VoltageBox.init();
 	temperaturBox1.init();
 	temperaturBox2.init();
+	temperaturBox3.init();
 	msgBox.init();
 	txRxBox.init();
 	pwrBar.init();
@@ -906,6 +925,7 @@ void setup()
 	pa1AmperBox.setFloat(pa1AmperValue, 1, 4, false);
 	temperaturBox1.setFloat(temperaturValue1, 1, 5, false);
 	temperaturBox2.setFloat(temperaturValue2, 1, 5, false);
+	temperaturBox3.setFloat(temperaturValue3, 1, 5, false);
 	if (temperaturValue1 > thresholdTemperaturTransistorMax)
 	{
 		TemperaturaTranzystoraMaxValue = true;
@@ -926,6 +946,10 @@ void setup()
 	else if (not temperaturBox2.isValueOk())
 	{
 		errorString = "Startup error: Temperature 2 not Ok";
+	}
+	else if (not temperaturBox3.isValueOk())
+	{
+		errorString = "Startup error: Temperature 3 not Ok";
 	}
 	else if (pa1AmperBox.getValue() > thresholdCurrent)
 	{
@@ -1019,27 +1043,29 @@ void loop()
 	// Set display values. The widgets monitors the values and output an errorString
 
 	pwrBar.setValue(pwrForwardValue, drawWidgetIndex == 1);
-	if (UpdatePowerAndVSWR())
+	//if (UpdatePowerAndVSWR())
+	if (true)
 	{
-		swrValue = calc_SWR(forwardValueAvg, returnValueAvg);
+		swrValue = calc_SWR(forwardValue, returnValue);
 		if (swrValue > thresholdSWR)
 		{
-			//digitalWrite(doPin_SWR_ant, LOW);???
-			 SWR3Value = true;
+			digitalWrite(doPin_SWR_ant, LOW);
+			SWR3Value = true;
 		}
 		else
 		{
-			//digitalWrite(doPin_SWR_ant, HIGH); ???
+			digitalWrite(doPin_SWR_ant, HIGH);
 			SWR3Value = false;
 		}
-		swrBar.setValue(swrValue, drawWidgetIndex == 3);
+		swrBar.setValue(swrValue, drawWidgetIndex == 2);
 	}
 
-	drainVoltageBox.setFloat(drainVoltageValue, 1, 4, drawWidgetIndex == 5);
-	aux1VoltageBox.setFloat(aux1VoltageValue, 1, 4, drawWidgetIndex == 6);
-	pa1AmperBox.setFloat(pa1AmperValue, 1, 4, drawWidgetIndex == 8);
-	temperaturBox1.setFloat(temperaturValue1, 1, 5, drawWidgetIndex == 9);
-	temperaturBox2.setFloat(temperaturValue2, 1, 5, drawWidgetIndex == 10);
+	drainVoltageBox.setFloat(drainVoltageValue, 1, 4, drawWidgetIndex == 3);
+	aux1VoltageBox.setFloat(aux1VoltageValue, 1, 4, drawWidgetIndex == 4);
+	pa1AmperBox.setFloat(pa1AmperValue, 1, 4, drawWidgetIndex == 5);
+	temperaturBox1.setFloat(temperaturValue1, 1, 5, drawWidgetIndex == 6);
+	temperaturBox2.setFloat(temperaturValue2, 1, 5, drawWidgetIndex == 7);
+	temperaturBox3.setFloat(temperaturValue3, 1, 5, drawWidgetIndex == 8);
 	// temperatura1 i wentylator1
 	if (temperaturValue1 >= thresholdTemperaturAirOn1)
 	{
@@ -1066,12 +1092,13 @@ void loop()
 	{
 		airBox2.setText("OFF");
 	}
+	// ToDo co z temperaturą 3?
 
 	// Draw index defines the infoBox that can draw new values on the utft.
 	// If all infoBoxes would draw together, the cycletime is to long and not constant for the morse output.
-	if (drawWidgetIndex == 10)
+	if (drawWidgetIndex == 8)
 	{
-		drawWidgetIndex = 0;
+		drawWidgetIndex = 1;
 	}
 	else
 	{
@@ -1149,6 +1176,8 @@ void loop()
 			byla_zmiana = true;
 			czas_zmiany = millis();
 			bandBox.setText(BAND[bandIdx]);
+			pwrBar.resetValueMax();
+			swrBar.resetValueMax();
 		}
 		else if (pttValue == false and modeBox.getText() == modeManualName
 				and Down.isTouchInside(touchX, touchY))
@@ -1164,6 +1193,8 @@ void loop()
 			byla_zmiana = true;
 			czas_zmiany = millis();
 			bandBox.setText(BAND[bandIdx]);
+			pwrBar.resetValueMax();
+			swrBar.resetValueMax();
 		}
 		else if (pwrBar.isTouchInside(touchX, touchY))
 		{
@@ -1268,6 +1299,8 @@ void loop()
 		{
 			bandIdx = AutoBandIdx;
 			bandBox.setText(BAND[bandIdx]);
+			pwrBar.resetValueMax();
+			swrBar.resetValueMax();
 		}
 	}
 
@@ -1454,6 +1487,7 @@ void read_inputs()
 	pa1AmperValue = analogRead(aiPin_pa1Amper)*pa1AmperFactor;
 	temperaturValue1 = getTemperatura(aiPin_temperatura1, Rf1);
 	temperaturValue2 = getTemperatura(aiPin_temperatura2, Rf2);
+	temperaturValue3 = getTemperatura(aiPin_temperatura3, Rf3);
 
 	pttValue = not digitalRead(diPin_ptt);					// aktywny stan niski
 	stbyValue = digitalRead(diPin_stby);					// aktywny stan wysoki
@@ -1466,19 +1500,20 @@ void read_inputs()
 }
 float calc_SWR(int forward, int ref)
 {
+#define MAX_SWR	9.9
 	float swr;
 	if (forward > 0)
 	{
 		if (forward <= ref)
 		{
-			swr = 9.99;
+			swr = MAX_SWR;
 		}
 		else
 		{
 			swr = (float)(forward + ref)/(forward - ref);
-			if (swr > 9.99)
+			if (swr > MAX_SWR)
 			{
-				swr = 9.99;
+				swr = MAX_SWR;
 			}
 		}
 	}

@@ -9,7 +9,7 @@
 #define STEROWNIK_PA_1KW_H_
 
 //#define SP2HYO
-#define SP3JDZ
+#define SP2HYO
 
 
 
