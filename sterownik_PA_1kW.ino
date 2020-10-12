@@ -24,7 +24,7 @@
 
  ToDo
  	 - ver. 1.9.5 trzeci termistor
- 	 	 - znika jednostka po init()
+ 	 	 - znika jednostka po init()...
  	 - ver. 1.9.4 zerowanie mocy szczytowej po zmianie pasma (ręcznej lub auto)
 
  	 - drugi termostat?
