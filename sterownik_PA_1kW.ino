@@ -23,10 +23,6 @@
  Całkowity pobór prądu z 5V (wyświetlacz, shield, arduino mega 2560) około 400mA.
 
  ToDo
-<<<<<<< HEAD
- 	 - co z mocą w setupie (może olać)?
- 	 - bargraf od SWRa lewa strona??
-=======
  	 - ver. 1.9.5 trzeci termistor
  	 	 - znika jednostka po init()
  	 - ver. 1.9.4 zerowanie mocy szczytowej po zmianie pasma (ręcznej lub auto)
@@ -40,7 +36,6 @@
  				- jest lepiej
  			- co gdy brak uśredniania
  				- jest nieźle
->>>>>>> wstecz
  	 - obsługa/brak obsługi kodu banddata z poza LPFów
  	 	 - i wyłączanie obsługi pasma 6m (#define JEST_6m)
  	 	 - blokada
@@ -796,10 +791,7 @@ float getTemperatura(uint8_t pin, int Rf);
 void read_inputs();
 float calc_SWR(int forward, int ref);
 bool UpdatePowerAndVSWR();
-<<<<<<< HEAD
-=======
 
->>>>>>> wstecz
 
 void setup()
 {
@@ -1049,24 +1041,15 @@ void loop()
 
 	//-----------------------------------------------------------------------------
 	// Set display values. The widgets monitors the values and output an errorString
-<<<<<<< HEAD
-	// SWR by UHSDR
-	if (UpdatePowerAndVSWR())
+	//if (UpdatePowerAndVSWR())
+	if (true)
 	{
 		pwrForwardValue = sq(forwardValue * pwrForwardFactor) / 50;
 		pwrReturnValue = sq(returnValue * pwrReturnFactor)/50;
 		pwrBar.setValue(pwrForwardValue, drawWidgetIndex == 1);
 
-		swrValue = swrm.vswr;
-		swrBar.setValue(swrValue, drawWidgetIndex == 3);
-=======
-
-	pwrBar.setValue(pwrForwardValue, drawWidgetIndex == 1);
-	//if (UpdatePowerAndVSWR())
-	if (true)
-	{
 		swrValue = calc_SWR(forwardValue, returnValue);
->>>>>>> wstecz
+		swrBar.setValue(swrValue, drawWidgetIndex == 3);
 		if (swrValue > thresholdSWR)
 		{
 			digitalWrite(doPin_SWR_ant, LOW);
@@ -1499,13 +1482,7 @@ void read_inputs()
 	//-----------------------------------------------------------------------------
 	// Read all inputs
 	forwardValue = analogRead(aiPin_pwrForward);
-<<<<<<< HEAD
 	returnValue = analogRead(aiPin_pwrReturn);
-=======
-	pwrForwardValue = sq(forwardValue * pwrForwardFactor) / 50;
-	returnValue = analogRead(aiPin_pwrReturn);
-	pwrReturnValue = sq(returnValue * pwrReturnFactor) / 50;
->>>>>>> wstecz
 	drainVoltageValue = analogRead(aiPin_drainVoltage) * drainVoltageFactor;
 	aux1VoltageValue = analogRead(aiPin_aux1Voltage) * aux1VoltageFactor;
 	pa1AmperValue = analogRead(aiPin_pa1Amper)*pa1AmperFactor;
@@ -1566,12 +1543,11 @@ float calc_SWR(float forward, float ref)
 */
 bool UpdatePowerAndVSWR()
 {
-<<<<<<< HEAD
 	//uint16_t val_p, val_s = 0;
 	bool retval = false;
 
 	// Collect samples
-	if (swrm.p_curr < SWR_SAMPLES_CNT)
+	if (p_curr < SWR_SAMPLES_CNT)
 	{
 		// Add to accumulator to average A/D values
 		swrm.fwd_calc += forwardValue;
@@ -1580,23 +1556,6 @@ bool UpdatePowerAndVSWR()
 	}
 	else
 	{
-=======
-	bool retval = false;
-
-	// Collect samples
-	if (p_curr < SWR_SAMPLES_CNT)
-	{
-		fwd_calc += forwardValue;
-		rev_calc += returnValue;
-		p_curr++;
-	}
-	else
-	{
-		// get calibration factor
-		// offset it so that 100 = 0
-		// divide so that each step = 1 millivolt
-
->>>>>>> wstecz
 		// Compute average values
 		forwardValueAvg = fwd_calc / SWR_SAMPLES_CNT;
 		//fwd_pwr = sq((forwardValueAvg) * pwrForwardFactor) / 50; NA RAZIE niepotrzebne
