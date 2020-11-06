@@ -23,6 +23,11 @@
  Całkowity pobór prądu z 5V (wyświetlacz, shield, arduino mega 2560) około 400mA.
 
  ToDo
+ 	 - ver. 1.9.6 wersja z dwoma tranzystorami
+ 	 	 - termistor1 -> tranzystor1 -> Fan1
+ 	 	 - termistor2 -> tranzystor2 -> Fan1
+ 	 	 - termistor3 -> radiator -> Fan2
+ 	 - uwaga: doPin_SWR_ant daje sygnał przy niższym SWR niż 3 (tymczasowe piki)
  	 - ver. 1.9.5 trzeci termistor
  	 	 - znika jednostka po init()
  	 - ver. 1.9.4 zerowanie mocy szczytowej po zmianie pasma (ręcznej lub auto)
@@ -93,9 +98,9 @@ extern uint8_t franklingothic_normal[];
 #define aiPin_aux1Voltage  	4	// 12V
 //						  	5	// wolne
 #define aiPin_pa1Amper     	6	// prąd drenu
-#define aiPin_temperatura1	7	// temperatura tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
-#define aiPin_temperatura2	8	// temperatura np. radiatora
-#define aiPin_temperatura3	9	// trzecia temperatura
+#define aiPin_temperatura1	7	// temperatura pierwszego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
+#define aiPin_temperatura2	8	// temperatura drugiego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
+#define aiPin_temperatura3	9	// temperatura radiatora
 #define doPin_Band_A   64	// doPin band A; 	A10
 #define doPin_Band_B   65	// doPin band B; 	A11
 #define doPin_Band_C   66	// doPin band C; 	A12
@@ -109,7 +114,7 @@ extern uint8_t franklingothic_normal[];
  * D0, D1 zarezerowowane dla serial debug
  *
  */
-#define doPin_Czas_Petli	2	// pomiar czasu pętli głównej -> PE3 na sztywno
+#define doPin_Czas_Petli	2	// pomiar czasu pętli głównej -> (wyjście PE4 na sztywno)
 #define diPin_Termostat		3	// wejście alarmowe z termostatu
 #define doPin_SWR_ant		4	// informacja o przekroczeniu SWR (według wartości obliczonej na podstawie forwardValue i returnValue) na wyjściu antenowym
 								// aktywny stan niski
@@ -885,7 +890,7 @@ void setup()
 	//myGLCD.print("DJ8QP ", RIGHT, 20);
 	//myGLCD.print("DC5ME ", RIGHT, 40);
 	myGLCD.setFont(SmallFont);
-	myGLCD.print("V1.9.4  ", RIGHT, 60);
+	myGLCD.print("V1.9.6  ", RIGHT, 60);
 
 	// Init the grafic objects
 	modeBox.init();
@@ -927,6 +932,10 @@ void setup()
 	temperaturBox2.setFloat(temperaturValue2, 1, 5, false);
 	temperaturBox3.setFloat(temperaturValue3, 1, 5, false);
 	if (temperaturValue1 > thresholdTemperaturTransistorMax)
+	{
+		TemperaturaTranzystoraMaxValue = true;
+	}
+	if (temperaturValue2 > thresholdTemperaturTransistorMax)
 	{
 		TemperaturaTranzystoraMaxValue = true;
 	}
@@ -1066,34 +1075,33 @@ void loop()
 	temperaturBox1.setFloat(temperaturValue1, 1, 5, drawWidgetIndex == 6);
 	temperaturBox2.setFloat(temperaturValue2, 1, 5, drawWidgetIndex == 7);
 	temperaturBox3.setFloat(temperaturValue3, 1, 5, drawWidgetIndex == 8);
-	// temperatura1 i wentylator1
-	if (temperaturValue1 >= thresholdTemperaturAirOn1)
+	// temperatura1 i temperatura2 i wentylator1
+	if (temperaturValue1 >= thresholdTemperaturAirOn1 or temperaturValue2 >= thresholdTemperaturAirOn1)
 	{
 		airBox1.setText("ON");
 	}
-	else if (temperaturValue1 <= thresholdTemperaturAirOn1 - 2)
+	else if ((temperaturValue1 <= thresholdTemperaturAirOn1 - 2) and (temperaturValue2 <= thresholdTemperaturAirOn1 - 2))
 	{
 		airBox1.setText("OFF");
 	}
-	if (temperaturValue1 > thresholdTemperaturTransistorMax)	// przekroczenie temperatury granicznej obudowy tranzystora
+
+	if (temperaturValue1 > thresholdTemperaturTransistorMax or temperaturValue2 > thresholdTemperaturTransistorMax)	// przekroczenie temperatury granicznej obudowy jednego z tranzystorów
 	{
 		TemperaturaTranzystoraMaxValue = true;
 	}
-	else if (temperaturValue1 < thresholdTemperaturTransistorMax - 5)
+	else if ((temperaturValue1 < thresholdTemperaturTransistorMax - 5) and (temperaturValue2 < thresholdTemperaturTransistorMax - 5))
 	{
 		TemperaturaTranzystoraMaxValue = false;
 	}
 
-	if (temperaturValue2 >= thresholdTemperaturAirOn2)
+	if (temperaturValue3 >= thresholdTemperaturAirOn2)
 	{
 		airBox2.setText("ON");
 	}
-	else if (temperaturValue2 <= thresholdTemperaturAirOn2 - 2)
+	else if (temperaturValue3 <= thresholdTemperaturAirOn2 - 2)
 	{
 		airBox2.setText("OFF");
 	}
-	// ToDo co z temperaturą 3?
-
 	// Draw index defines the infoBox that can draw new values on the utft.
 	// If all infoBoxes would draw together, the cycletime is to long and not constant for the morse output.
 	if (drawWidgetIndex == 8)
