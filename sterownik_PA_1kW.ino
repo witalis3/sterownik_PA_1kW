@@ -23,17 +23,23 @@
  Całkowity pobór prądu z 5V (wyświetlacz, shield, arduino mega 2560) około 400mA.
 
  ToDo
+ 	 - ver. 1.9.8
+ 	 	 - obsługa pomiaru prądu na ACS758 (prąd do wyboru np. 100A)
+ 	 	 - zamiana miejscami 50V z pomiarem prądu (50A)
+ 	 	 - na doPin_Czas_Petli (D2) wejście z ATU blokujące nadmierne SWRy na czas strojenia
+ 	 	 	 - stan wysoki blokuje
+ 	 - ver. 1.9.7
+ 	 	 - ;start "2 kW"
+ 	 	 - ;T1 i T2 w jednej linii na wyświetlaczu
+ 	 	 - ;T3 pod spodem i 14V
  	 - ver. 1.9.6 wersja z dwoma tranzystorami
  	 	 - termistor1 -> tranzystor1 -> Fan1
  	 	 - termistor2 -> tranzystor2 -> Fan1
  	 	 - termistor3 -> radiator -> Fan2
  	 - uwaga: doPin_SWR_ant daje sygnał przy niższym SWR niż 3 (tymczasowe piki)
  	 - ver. 1.9.5 trzeci termistor
- 	 	 - znika jednostka po init()
- 	 - ver. 1.9.4 zerowanie mocy szczytowej po zmianie pasma (ręcznej lub auto)
-
- 	 - drugi termostat?
- 	 	 - ew. na D2 (pomiar pętli na -> D18)
+ 	 - ver. 1.9.4
+ 	 	 - zerowanie mocy szczytowej po zmianie pasma (ręcznej lub auto)
  	- spowolnienie przy spadku z dużego SWR?
  		- test
  			- wyłączyć 4% spadek przy value > valueMax (spadek wartości powyżej ValueMax natychmiastowy)
@@ -70,12 +76,12 @@ UTFT myGLCD(SSD1963_800480, 38, 39, 40, 41);
 UTouch myTouch(43, 42, 44, 45, 46);
 // Declare which fonts we will be using
 // Download http://www.rinkydinkelectronics.com/r_fonts.php
-extern uint8_t SmallFont[];
-extern uint8_t Grotesk16x32[];
-extern uint8_t GroteskBold16x32[];
-extern uint8_t GroteskBold32x64[];
-extern uint8_t nadianne[];
-extern uint8_t franklingothic_normal[];
+extern uint8_t SmallFont[];		// 8x12 -> 18 (8x16)
+extern uint8_t Grotesk16x32[];	// ? 22 (17x20)
+extern uint8_t GroteskBold16x32[];	// ? 23 (18x22) bold
+extern uint8_t GroteskBold32x64[];	// ? 31 (37x49)
+extern uint8_t nadianne[];			// 16x16 -> 21 (13x17) lub 22 (17x20)
+extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 
 // Define some colors
 // Help under http://www.barth-dev.de/online/rgb565-color-picker/
@@ -114,7 +120,7 @@ extern uint8_t franklingothic_normal[];
  * D0, D1 zarezerowowane dla serial debug
  *
  */
-#define doPin_Czas_Petli	2	// pomiar czasu pętli głównej -> (wyjście PE4 na sztywno)
+#define diPin_blok_Alarm_SWR	2	// wejście sygnału z ATU blokującego alarmy od SWRów (stan wysoki aktywny)
 #define diPin_Termostat		3	// wejście alarmowe z termostatu
 #define doPin_SWR_ant		4	// informacja o przekroczeniu SWR (według wartości obliczonej na podstawie forwardValue i returnValue) na wyjściu antenowym
 								// aktywny stan niski
@@ -138,8 +144,8 @@ extern uint8_t franklingothic_normal[];
 // 47-53 wolne
 
 // zapisywanie w EEPROM: Auto/Manual i pasmo
-#define COLDSTART_REF      0x12   // When started, the firmware examines this "Serial Number"
-#define CZAS_REAKCJI 1000		// the time [ms] after which the writing into EEPROM takes place
+#define COLDSTART_REF      0x12   	// When started, the firmware examines this "Serial Number"
+#define CZAS_REAKCJI 1000			// the time [ms] after which the writing into EEPROM takes place
 boolean byla_zmiana = false;
 unsigned long czas_zmiany;
 
@@ -152,10 +158,10 @@ float pa1AmperValue;
 float temperaturValue1;
 float temperaturValue2;
 float temperaturValue3;
-int forwardValue;	// odczyt napięcia padającego z direct couplera
+int forwardValue;		// odczyt napięcia padającego z direct couplera
 int forwardValueAvg;	// średnia z napięcia padającego z direct couplera
-int returnValue;	// odczyt napięcia odbitego z direct couplera
-int returnValueAvg;	// średnia napięcia odbitego z direct couplera
+int returnValue;		// odczyt napięcia odbitego z direct couplera
+int returnValueAvg;		// średnia napięcia odbitego z direct couplera
 int fwd_calc = 0;		// sumaryczny odczyt
 int rev_calc = 0;
 int p_curr = 0;			// licznik odczytów
@@ -191,10 +197,13 @@ bool errLedValue;
 #define drainVoltageFactor (inputFactorVoltage * (60.0/5.0))// 5V Input = 60V PA
 #define aux1VoltageFactor (inputFactorVoltage * (30.0/5.0)) // 5V Input = 30V PA
 #define aux2VoltageFactor (inputFactorVoltage * (15.0/5.0)) // 5V Input = 15V PA
-//#define pa1AmperFactor (inputFactorVoltage * (62.5/2.5))    // 40mV/A
+#ifdef ACS758
+#define pa1AmperFactor (inputFactorVoltage * (125/2.5))    // 20mV/A ACS758LCB-100B
+#define pa1AmperOffset (1023/5 * 2.505)                     // 2.5V z czujnika Hallla -> zmierzyć i wstawić
+#else
 #define pa1AmperFactor (inputFactorVoltage * (65.0/5.0))    // 1k Ris w BTS50085
-//#define pa1AmperOffset (1023/5 * 2.505)                     // 2.5V z czujnika Hallla
-//#define pa1AmperOffset (0.0)                     // 0.0V	- pomiar z BTS50085 - od zera
+#define pa1AmperOffset (0.0)                     // 0.0V	- pomiar z BTS50085 - od zera
+#endif
 //#define pa2AmperFactor (inputFactorVoltage * (62.5/2.5))    // 40mV/A
 //#define pa2AmperOffset (1023/5 * 2.505)                     // 2.5V
 //#define temperaturFactor (inputFactorVoltage * (100.0/5.0)) // 5V = 100°C
@@ -236,10 +245,10 @@ byte AutoBandIdx = 15;
 
 #define thresholdCurrent           1.0
 #define thresholdPower             5.0
-#define thresholdSWR               3.0
-#define thresholdTemperaturAirOn1   30
+#define thresholdSWR               3.5		// zmiana na 3.5 dla HYO
+#define thresholdTemperaturAirOn1   39
 #define thresholdTemperaturTransistorMax	60		// temperatura tranzystora (z termistora nr 1), przy której PA jest blokowane - STBY
-#define thresholdTemperaturAirOn2   30
+#define thresholdTemperaturAirOn2   49
 
 String infoString = "";
 String warningString = "";		// nieużywany
@@ -365,6 +374,7 @@ public:
 
 	void setFloat(float value, int dec, int length, bool show)
 	{
+		// dec ile po przecinku, lenght długość całkowita
 		if ((value != _value) or _drawLater)
 		{
 			_value = value;
@@ -759,18 +769,23 @@ InfoBox modeBox("MODE", "", 395, 60, 32, 200, 0, 0, vgaValueColor, vgaBackground
 
 InfoBox bandBox("LPF", "m", 20, 20, 72, 350, 0, 0, vgaValueColor, vgaBackgroundColor, GroteskBold32x64);
 
-InfoBox drainVoltageBox("DRAIN", "V", 20, 340, 32, 125, 48, 54, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
-InfoBox aux1VoltageBox("AUX R", "V", 170, 340, 32, 125, 11, 15, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
+InfoBox pa1AmperBox("PA 1", "A", 20, 340, 32, 125, 0, 32.0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
+InfoBox drainVoltageBox("DRAIN", "V", 20, 380, 32, 125, 48, 54, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
+
+InfoBox aux1VoltageBox("AUX ", "V", 170, 380, 32, 125, 11, 15, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
+//InfoBox aux1VoltageBox("AUX R", "V", 170, 340, 32, 125, 11, 15, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
+
 // InfoBox aux2VoltageBox("AUX B", "V", 320, 340, 32, 125, 11, 14, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
 InfoBox airBox1("AIR1", "", 470, 340, 32, 125, 0, 0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
 InfoBox airBox2("AIR2", "", 470, 380, 32, 125, 0, 0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
 
-InfoBox pa1AmperBox("PA 1", "A", 20, 380, 32, 125, 0, 32.0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
 //InfoBox pa2AmperBox("PA 2", "A", 170, 380, 32, 125, 0, 24.9, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
 
-InfoBox temperaturBox1("", "`C", 320, 340, 32, 125, 10, 60, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
-InfoBox temperaturBox2("", "`C", 320, 380, 32, 125, 10, 60, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
-InfoBox temperaturBox3("", "`C", 170, 380, 32, 125, 10, 60, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
+InfoBox temperaturBox1("", "`C", 170, 340, 32, 125, 10, 60, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
+InfoBox temperaturBox2("", "`C", 320, 340, 32, 125, 10, 60, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
+
+//InfoBox temperaturBox2("", "`C", 320, 380, 32, 125, 10, 60, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
+InfoBox temperaturBox3("", "`C", 320, 380, 32, 125, 10, 60, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
 
 
 InfoBox emptyBox("", "", 170, 380, 32, 125, 0.0, 0.0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
@@ -840,9 +855,7 @@ void setup()
 	myTouch.InitTouch(LANDSCAPE);
 	myTouch.setPrecision(PREC_MEDIUM);
 
-#ifdef CZAS_PETLI
-	pinMode(doPin_Czas_Petli, OUTPUT);
-#endif
+	pinMode(diPin_blok_Alarm_SWR, INPUT_PULLUP);	// stan aktywny wysoki -> musi być coś podpięte lub rezystor do masy
 	pinMode(diPin_Termostat, INPUT_PULLUP);
 	pinMode(doPin_SWR_ant, OUTPUT);
 	digitalWrite(doPin_SWR_ant, HIGH);
@@ -870,7 +883,7 @@ void setup()
 
 	myGLCD.setFont(GroteskBold32x64);
 	myGLCD.setColor(vgaValueColor);
-	myGLCD.print("LDMOS-PA  1kW", CENTER, 50);
+	myGLCD.print("LDMOS-PA  2kW", CENTER, 50);
 	myGLCD.setFont(Grotesk16x32);
 	myGLCD.print("160m - 6m", CENTER, 150);
 	//myGLCD.print("BLF 188XR", CENTER, 200);
@@ -890,7 +903,7 @@ void setup()
 	//myGLCD.print("DJ8QP ", RIGHT, 20);
 	//myGLCD.print("DC5ME ", RIGHT, 40);
 	myGLCD.setFont(SmallFont);
-	myGLCD.print("V1.9.6  ", RIGHT, 60);
+	myGLCD.print("V1.9.8  ", RIGHT, 60);
 
 	// Init the grafic objects
 	modeBox.init();
@@ -1056,7 +1069,7 @@ void loop()
 	{
 
 		swrValue = calc_SWR(forwardValue, returnValue);
-		if (swrValue > thresholdSWR)
+		if (swrValue > thresholdSWR and not digitalRead(diPin_blok_Alarm_SWR))
 		{
 			digitalWrite(doPin_SWR_ant, LOW);
 			SWR3Value = true;
@@ -1450,7 +1463,8 @@ void loop()
 	}
 
 #ifdef CZAS_PETLI
-	PORTE ^= (1<<PE4);		// nr portu na sztywno! = D2
+	PORTE ^= (1<<PE4);		// nr portu na sztywno! =
+	// ToDo D2 -> zajęty - zmienić port
 #else
 	// Keep the cycle time constant
 	timeAtCycleEnd = millis();
@@ -1492,7 +1506,7 @@ void read_inputs()
 	pwrReturnValue = sq(returnValue * pwrReturnFactor) / 50;
 	drainVoltageValue = analogRead(aiPin_drainVoltage) * drainVoltageFactor;
 	aux1VoltageValue = analogRead(aiPin_aux1Voltage) * aux1VoltageFactor;
-	pa1AmperValue = analogRead(aiPin_pa1Amper)*pa1AmperFactor;
+	pa1AmperValue = (analogRead(aiPin_pa1Amper) - pa1AmperOffset)*pa1AmperFactor;
 	temperaturValue1 = getTemperatura(aiPin_temperatura1, Rf1);
 	temperaturValue2 = getTemperatura(aiPin_temperatura2, Rf2);
 	temperaturValue3 = getTemperatura(aiPin_temperatura3, Rf3);
@@ -1501,8 +1515,8 @@ void read_inputs()
 	stbyValue = digitalRead(diPin_stby);					// aktywny stan wysoki
 	ImaxValue = not digitalRead(diPin_Imax);				// aktywny stan niski
 	PmaxValue = not digitalRead(diPin_Pmax);				// aktywny stan niski
-	SWRmaxValue = not digitalRead(diPin_SWRmax);			// aktywny stan niski
-	SWRLPFmaxValue = not digitalRead(diPin_SWR_LPF_max);	// aktywny stan niski
+	SWRmaxValue = not digitalRead(diPin_SWRmax) and digitalRead(diPin_blok_Alarm_SWR);			// aktywny stan niski (dla diPin_SWRmax)
+	SWRLPFmaxValue = not digitalRead(diPin_SWR_LPF_max) and digitalRead(diPin_blok_Alarm_SWR);	// aktywny stan niski (dla diPin_SWR_LPF_max)
 	SWR_ster_max = not digitalRead(diPin_SWR_ster_max);		// aktywny stan niski
 	TermostatValue = not digitalRead(diPin_Termostat);		// aktywny stan niski
 }

@@ -8,9 +8,9 @@
 #ifndef STEROWNIK_PA_1KW_H_
 #define STEROWNIK_PA_1KW_H_
 
-//#define SP2HYO
+#define ACS758	// pomiar prądu czujnikiem Halla
 #define SP2HYO
-
+//#define DEBUG
 
 
 #endif /* STEROWNIK_PA_1KW_H_ */
