@@ -23,6 +23,8 @@
  Całkowity pobór prądu z 5V (wyświetlacz, shield, arduino mega 2560) około 400mA.
 
  ToDo
+ 	 - ver. 1.9.9
+ 	 	 - brak reakcji na wartość ujemną prądu drenu
  	 - ver. 1.9.8
  	 	 - obsługa pomiaru prądu na ACS758 (prąd do wyboru np. 100A)
  	 	 - zamiana miejscami 50V z pomiarem prądu (50A)
@@ -120,7 +122,7 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
  * D0, D1 zarezerowowane dla serial debug
  *
  */
-#define diPin_blok_Alarm_SWR	2	// wejście sygnału z ATU blokującego alarmy od SWRów (stan wysoki aktywny)
+#define diPin_blok_Alarm_SWR	2	// wejście sygnału z ATU blokującego alarmy od SWRów na czas strojenia (stan wysoki aktywny)
 #define diPin_Termostat		3	// wejście alarmowe z termostatu
 #define doPin_SWR_ant		4	// informacja o przekroczeniu SWR (według wartości obliczonej na podstawie forwardValue i returnValue) na wyjściu antenowym
 								// aktywny stan niski
@@ -374,7 +376,7 @@ public:
 
 	void setFloat(float value, int dec, int length, bool show)
 	{
-		// dec ile po przecinku, lenght długość całkowita
+		// dec ile po przecinku, length długość całkowita
 		if ((value != _value) or _drawLater)
 		{
 			_value = value;
@@ -859,7 +861,8 @@ void setup()
 	pinMode(diPin_Termostat, INPUT_PULLUP);
 	pinMode(doPin_SWR_ant, OUTPUT);
 	digitalWrite(doPin_SWR_ant, HIGH);
-	pinMode(doPin_blokada, OUTPUT);
+	pinMode(doPin_blokada, OUTPUT);		// aktywny stan wysoki
+	digitalWrite(doPin_blokada, LOW);
 	pinMode(doPin_errLED, OUTPUT);
 	pinMode(diPin_SWR_ster_max, INPUT_PULLUP);
 	pinMode(doPin_Band_A, OUTPUT);
@@ -903,7 +906,7 @@ void setup()
 	//myGLCD.print("DJ8QP ", RIGHT, 20);
 	//myGLCD.print("DC5ME ", RIGHT, 40);
 	myGLCD.setFont(SmallFont);
-	myGLCD.print("V1.9.8  ", RIGHT, 60);
+	myGLCD.print("V1.9.9  ", RIGHT, 60);
 
 	// Init the grafic objects
 	modeBox.init();
@@ -1507,6 +1510,8 @@ void read_inputs()
 	drainVoltageValue = analogRead(aiPin_drainVoltage) * drainVoltageFactor;
 	aux1VoltageValue = analogRead(aiPin_aux1Voltage) * aux1VoltageFactor;
 	pa1AmperValue = (analogRead(aiPin_pa1Amper) - pa1AmperOffset)*pa1AmperFactor;
+	if (pa1AmperValue < 0)
+		pa1AmperValue = 0;
 	temperaturValue1 = getTemperatura(aiPin_temperatura1, Rf1);
 	temperaturValue2 = getTemperatura(aiPin_temperatura2, Rf2);
 	temperaturValue3 = getTemperatura(aiPin_temperatura3, Rf3);
@@ -1515,7 +1520,7 @@ void read_inputs()
 	stbyValue = digitalRead(diPin_stby);					// aktywny stan wysoki
 	ImaxValue = not digitalRead(diPin_Imax);				// aktywny stan niski
 	PmaxValue = not digitalRead(diPin_Pmax);				// aktywny stan niski
-	SWRmaxValue = not digitalRead(diPin_SWRmax) and digitalRead(diPin_blok_Alarm_SWR);			// aktywny stan niski (dla diPin_SWRmax)
+	SWRmaxValue = not (digitalRead(diPin_SWRmax) or digitalRead(diPin_blok_Alarm_SWR));			// aktywny stan niski (dla diPin_SWRmax)
 	SWRLPFmaxValue = not digitalRead(diPin_SWR_LPF_max) and digitalRead(diPin_blok_Alarm_SWR);	// aktywny stan niski (dla diPin_SWR_LPF_max)
 	SWR_ster_max = not digitalRead(diPin_SWR_ster_max);		// aktywny stan niski
 	TermostatValue = not digitalRead(diPin_Termostat);		// aktywny stan niski
