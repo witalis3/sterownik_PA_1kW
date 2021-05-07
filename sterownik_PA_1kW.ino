@@ -23,6 +23,8 @@
  Całkowity pobór prądu z 5V (wyświetlacz, shield, arduino mega 2560) około 400mA.
 
  ToDo
+ 	 - ver. 1.9.10
+ 	 	 - brak komunikatu podczas strojenia z ATU dla SWR powyżej Max (5.0)
  	 - ver. 1.9.9
  	 	 - brak reakcji na wartość ujemną prądu drenu
  	 - ver. 1.9.8
@@ -1072,7 +1074,8 @@ void loop()
 	{
 
 		swrValue = calc_SWR(forwardValue, returnValue);
-		if (swrValue > thresholdSWR and not digitalRead(diPin_blok_Alarm_SWR))
+		bool blok_Alarm_SWR = digitalRead(diPin_blok_Alarm_SWR);
+		if (swrValue > thresholdSWR and not blok_Alarm_SWR)
 		{
 			digitalWrite(doPin_SWR_ant, LOW);
 			SWR3Value = true;
@@ -1082,6 +1085,8 @@ void loop()
 			digitalWrite(doPin_SWR_ant, HIGH);
 			SWR3Value = false;
 		}
+		if (blok_Alarm_SWR and swrValue >= 5.0)
+			swrValue = 4.9;		// sztuczne obniżenie wartości SWR podczas strojenia ATU
 		swrBar.setValue(swrValue, drawWidgetIndex == 2);
 	}
 
