@@ -23,6 +23,7 @@
  Całkowity pobór prądu z 5V (wyświetlacz, shield, arduino mega 2560) około 400mA.
 
  ToDo
+ 	 - po przekroczeniu prądu brak kodu BCD
  	 - ver. 1.9.10
  	 	 - brak komunikatu podczas strojenia z ATU dla SWR powyżej Max (5.0)
  	 - ver. 1.9.9
@@ -102,8 +103,8 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
  */
 
 //					     	0	// wolne
-#define aiPin_pwrForward   	1
-#define aiPin_pwrReturn    	2
+#define aiPin_pwrForward   	1	// A1
+#define aiPin_pwrReturn    	2	// A2
 #define aiPin_drainVoltage 	3
 #define aiPin_aux1Voltage  	4	// 12V
 //						  	5	// wolne
