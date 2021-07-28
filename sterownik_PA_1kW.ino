@@ -23,7 +23,24 @@
  Całkowity pobór prądu z 5V (wyświetlacz, shield, arduino mega 2560) około 400mA.
 
  ToDo
- 	 - po przekroczeniu prądu brak kodu BCD
+ 	 - zrobione! 3 tłumiki
+ 	 	 - zmiana wyjść
+ 	 	 	 - DCBA -> D->20;.. A->17
+ 	 	 - dolny zakres (np. do 20m)
+ 	 	 - górny zakres (20-10m)
+ 	 	 - 6m
+ 	 	 - zmiana: wyjścia cyfrowe 14, 15, 16 na przekaźniki
+ 	 	 	- stan aktywny niski
+ 	 - zauważone usterki
+ 	 	 - pasma są przełączane przy każdym przejściu pętli ;-)
+
+ 	 	 - przy braku 50V (alarm od tego napięcia) działa PTT
+ 	 	 - po puszczeniu PTT linijka SWR leci do końca czasami i powoduje generowanie błądu
+ 	 	 	 - może jest pomiar podczas odbioru jeszcze?
+ 	 	 	 - czy nie ma za dużych pojemności na wyj couplera -> inne dla FWD i inne dla REF (REF > FWD)
+ 	 - po przekroczeniu prądu brak kodu BCD?
+ 	 - ver. 1.9.11
+ 	 	 - obsługa 3 tłumików
  	 - ver. 1.9.10
  	 	 - brak komunikatu podczas strojenia z ATU dla SWR powyżej Max (5.0)
  	 - ver. 1.9.9
@@ -112,10 +129,10 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 #define aiPin_temperatura1	7	// temperatura pierwszego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
 #define aiPin_temperatura2	8	// temperatura drugiego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
 #define aiPin_temperatura3	9	// temperatura radiatora
-#define doPin_Band_A   64	// doPin band A; 	A10
-#define doPin_Band_B   65	// doPin band B; 	A11
-#define doPin_Band_C   66	// doPin band C; 	A12
-#define doPin_Band_D   67	// doPin band D; 	A13
+#define doPin_Band_A   		64	// doPin band A; 	A10
+#define doPin_Band_B   		65	// doPin band B; 	A11
+#define doPin_Band_C   		66	// doPin band C; 	A12
+#define doPin_Band_D   		67	// doPin band D; 	A13
 
 #define doPin_air1         	68	// wentylator = A14
 #define doPin_air2         	69	// wentylator = A15
@@ -133,18 +150,22 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 #define doPin_errLED      	6	// dioda wystąpienia jakiegoś błędu - aktywny stan wysoki - jak jest błąd - stan wysoki i mruga
 #define diPin_SWR_ster_max	7	// przekroczony SWR na wejściu
 #define diPin_ptt          	8	// wejście PTT
-#define diPin_SWR_LPF_max   9	// przekroczony SWR max od LPF
-#define diPin_stby        	10	// ustawienie PA w tryb ominięcia
+#define diPin_SWR_LPF_max   9	// przekroczony SWR max od LPF; aktywny stan niski
+#define diPin_stby        	10	// ustawienie PA w tryb ominięcia; aktywny stan wysoki
 #define diPin_Imax        	11	// przekroczony prąd drenu
 #define diPin_Pmax        	12	// przekroczenie mocy sterowania (na wejściu)
 #define diPin_SWRmax      	13	// przekroczenie SWR na wyjściu antenowym
 
-#define diPin_bandData_A  	14	// band data A
-#define diPin_bandData_B  	15	// band data B
-#define diPin_bandData_C  	16	// band data C
-#define diPin_bandData_D  	17	// band data D
-// D18, D19 wolne
-// D20, D21 magistrala I2C (aktualnie niewykorzystywana)
+#define doPin_ATT1			14	// sterowanie przekaźnikiem pierwszego tłumika; stan aktywny niski
+#define doPin_ATT2			15	// sterowanie przekaźnikiem drugiego tłumika; stan aktywny niski
+#define doPin_ATT3			16	// sterowanie przekaźnikiem trzeciego tłumika; stan aktywny niski
+
+#define diPin_bandData_A  	17	// band data A
+#define diPin_bandData_B  	18	// band data B
+#define diPin_bandData_C  	19	// band data C
+#define diPin_bandData_D  	20	// band data D
+//
+// D20, D21 magistrala I2C -> nie do wykorzystania
 // digital pin 22-46 used by UTFT (resistive touch)
 // 47-53 wolne
 
@@ -244,6 +265,13 @@ enum
 	BAND_6,
 	BAND_NUM
 };
+enum
+{
+	ATT1 = 14,
+	ATT2,
+	ATT3
+};
+byte ATT[BAND_NUM] = {ATT1, ATT1, ATT1, ATT1, ATT1, ATT2, ATT2, ATT2, ATT2, ATT3};
 String BAND[BAND_NUM] = {"    160", "    80", "    40", "    30", "    20","    17", "    15","    12", "    10", "     6"};
 byte bandIdx = 1;
 byte AutoBandIdx = 15;
@@ -252,7 +280,7 @@ byte AutoBandIdx = 15;
 #define thresholdPower             5.0
 #define thresholdSWR               3.5		// zmiana na 3.5 dla HYO
 #define thresholdTemperaturAirOn1   39
-#define thresholdTemperaturTransistorMax	60		// temperatura tranzystora (z termistora nr 1), przy której PA jest blokowane - STBY
+#define thresholdTemperaturTransistorMax	70		// temperatura tranzystora (z termistora nr 1), przy której PA jest blokowane - STBY
 #define thresholdTemperaturAirOn2   49
 
 String infoString = "";
@@ -786,14 +814,15 @@ InfoBox airBox2("AIR2", "", 470, 380, 32, 125, 0, 0, vgaValueColor, vgaBackgroun
 
 //InfoBox pa2AmperBox("PA 2", "A", 170, 380, 32, 125, 0, 24.9, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
 
-InfoBox temperaturBox1("", "`C", 170, 340, 32, 125, 10, 60, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
-InfoBox temperaturBox2("", "`C", 320, 340, 32, 125, 10, 60, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
+// temperatury 10 do 70 stopni
+InfoBox temperaturBox1("", "`C", 170, 340, 32, 125, 10, 70, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
+InfoBox temperaturBox2("", "`C", 320, 340, 32, 125, 10, 70, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
 
 //InfoBox temperaturBox2("", "`C", 320, 380, 32, 125, 10, 60, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
 InfoBox temperaturBox3("", "`C", 320, 380, 32, 125, 10, 60, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
 
-
-InfoBox emptyBox("", "", 170, 380, 32, 125, 0.0, 0.0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
+// wypełniacz pustego boksu
+//InfoBox emptyBox("", "", 170, 380, 32, 125, 0.0, 0.0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
 
 InfoBox msgBox("", "", 20, 420, 32, 760, 0, 0, vgaValueColor, vgaBackgroundColor, Grotesk16x32);
 InfoBox txRxBox("", "", 645, 340, 72, 135, 0, 0, vgaValueColor, vgaBackgroundColor, GroteskBold32x64);
@@ -881,11 +910,17 @@ void setup()
 	pinMode(doPin_air2, OUTPUT);
 
 	pinMode(diPin_ptt, INPUT_PULLUP);
-	pinMode(diPin_SWR_LPF_max, INPUT_PULLUP);
+	pinMode(diPin_SWR_LPF_max, INPUT_PULLUP); 	// aktywny stan niski
 	pinMode(diPin_stby, INPUT_PULLUP);
 	pinMode(diPin_Imax, INPUT_PULLUP);
 	pinMode(diPin_Pmax, INPUT_PULLUP);
 	pinMode(diPin_SWRmax, INPUT_PULLUP);
+	pinMode(doPin_ATT1, OUTPUT);
+	digitalWrite(doPin_ATT1, HIGH);	// stan aktywny niski
+	pinMode(doPin_ATT2, OUTPUT);
+	digitalWrite(doPin_ATT2, HIGH);	// stan aktywny niski
+	pinMode(doPin_ATT3, OUTPUT);
+	digitalWrite(doPin_ATT3, HIGH);	// stan aktywny niski
 
 	myGLCD.setFont(GroteskBold32x64);
 	myGLCD.setColor(vgaValueColor);
@@ -909,7 +944,7 @@ void setup()
 	//myGLCD.print("DJ8QP ", RIGHT, 20);
 	//myGLCD.print("DC5ME ", RIGHT, 40);
 	myGLCD.setFont(SmallFont);
-	myGLCD.print("V1.9.9  ", RIGHT, 60);
+	myGLCD.print("V1.9.11  ", RIGHT, 60);
 
 	// Init the grafic objects
 	modeBox.init();
@@ -937,7 +972,7 @@ void setup()
 	airBox1.setText("OFF");
 	airBox2.init();
 	airBox2.setText("OFF");
-	emptyBox.init();
+	//emptyBox.init();
 	// Start init test
 	// przeniosłem do setupu
 	read_inputs();
@@ -961,7 +996,7 @@ void setup()
 
 	if (not drainVoltageBox.isValueOk())
 	{
-		errorString = "Startup error: Drain voltage not Ok";
+		errorString = "Startup error: Awaria zasilania";
 	}
 	else if (not aux1VoltageBox.isValueOk())
 	{
@@ -993,19 +1028,19 @@ void setup()
 	}
 	else if (ImaxValue == true)
 	{
-		errorString = "Startup error: Protector Imax detected";
+		errorString = "Startup error: Przekroczony IDD";
 	}
 	else if (PmaxValue == true)
 	{
-		errorString = "Startup error: Protector Pmax detected";
+		errorString = "Startup error: Przekroczony power input";
 	}
 	else if (SWRLPFmaxValue == true)
 	{
-		errorString = "Startup error: Protector SWR LPF max detected";
+		errorString = "Startup error: SWR LPF max";
 	}
 	else if (TemperaturaTranzystoraMaxValue == true)
 	{
-		errorString = "Startup error: Protector transistor temp max detected";
+		errorString = "Startup error: Przekroczona temperatura tranzystora";
 	}
 	else if (TermostatValue == true)
 	{
@@ -1138,7 +1173,7 @@ void loop()
 	// Monitor additional inputs and set errorString
 	if (ImaxValue == true)
 	{
-		errorString = "Error: Protector Imax detected";
+		errorString = "Error: Przekroczony IDD";
 	}
 	if (TermostatValue == true)
 	{
@@ -1146,29 +1181,29 @@ void loop()
 	}
 	if (PmaxValue == true)
 	{
-		errorString = "Error: Protector Pmax detected";
+		errorString = "Error: Przekroczony power input";
 	}
 	if (SWRmaxValue == true)
 	{
-		errorString = "Error: Protector SWR max detected";
+		errorString = "Error: Przekroczony SWR anteny";
 	}
 
 	if (SWRLPFmaxValue == true)
 	{
-		errorString = "Error: Protector SWR LPF max detected";
+		errorString = "Error: SWR LPF max";
 	}
 	if (SWR_ster_max == true)
 	{
-		errorString = "Error: Protector input SWR max detected";
+		errorString = "Error: Power input SWR";
 	}
 
 	if (TemperaturaTranzystoraMaxValue == true)
 	{
-		errorString = "Error: Protector transistor temp max detected";
+		errorString = "Error: Przekroczenie temperatury tranzystora";
 	}
 	if (SWR3Value == true)
 	{
-		errorString = "Error: dangerous SWR detected";
+		errorString = "Error: SWR anteny sterownik";
 	}
 	else if (errorString == "")
 	{
@@ -1420,6 +1455,12 @@ void loop()
 		default:
 			break;
 		}
+		// wyłączenie tłumików
+		digitalWrite(ATT1, HIGH);
+		digitalWrite(ATT2, HIGH);
+		digitalWrite(ATT3, HIGH);
+		// włączenie tłumika stosownie do wybranego pasma
+		digitalWrite(ATT[bandIdx], LOW);
 	}
 
 	if ((ImaxValue or TermostatValue or PmaxValue or SWRmaxValue or SWRLPFmaxValue or SWR_ster_max or TemperaturaTranzystoraMaxValue or not genOutputEnable)  and toogle500ms)
@@ -1527,7 +1568,8 @@ void read_inputs()
 	ImaxValue = not digitalRead(diPin_Imax);				// aktywny stan niski
 	PmaxValue = not digitalRead(diPin_Pmax);				// aktywny stan niski
 	SWRmaxValue = not (digitalRead(diPin_SWRmax) or digitalRead(diPin_blok_Alarm_SWR));			// aktywny stan niski (dla diPin_SWRmax)
-	SWRLPFmaxValue = not digitalRead(diPin_SWR_LPF_max) and digitalRead(diPin_blok_Alarm_SWR);	// aktywny stan niski (dla diPin_SWR_LPF_max)
+	// aktywny stan niski (dla diPin_SWR_LPF_max); aktywny stan wysoki dla blokady
+	SWRLPFmaxValue = (not digitalRead(diPin_SWR_LPF_max)) and (not digitalRead(diPin_blok_Alarm_SWR));
 	SWR_ster_max = not digitalRead(diPin_SWR_ster_max);		// aktywny stan niski
 	TermostatValue = not digitalRead(diPin_Termostat);		// aktywny stan niski
 }
