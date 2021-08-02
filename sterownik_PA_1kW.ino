@@ -23,22 +23,16 @@
  Całkowity pobór prądu z 5V (wyświetlacz, shield, arduino mega 2560) około 400mA.
 
  ToDo
- 	 - zrobione! 3 tłumiki
- 	 	 - zmiana wyjść
- 	 	 	 - DCBA -> D->20;.. A->17
- 	 	 - dolny zakres (np. do 20m)
- 	 	 - górny zakres (20-10m)
- 	 	 - 6m
- 	 	 - zmiana: wyjścia cyfrowe 14, 15, 16 na przekaźniki
- 	 	 	- stan aktywny niski
+ 	 - na razie nic
  	 - zauważone usterki
- 	 	 - pasma są przełączane przy każdym przejściu pętli ;-)
-
- 	 	 - przy braku 50V (alarm od tego napięcia) działa PTT
- 	 	 - po puszczeniu PTT linijka SWR leci do końca czasami i powoduje generowanie błądu
- 	 	 	 - może jest pomiar podczas odbioru jeszcze?
- 	 	 	 - czy nie ma za dużych pojemności na wyj couplera -> inne dla FWD i inne dla REF (REF > FWD)
- 	 - po przekroczeniu prądu brak kodu BCD?
+ 	 	 - nie pamiętam
+			 - przy braku 50V (alarm od tego napięcia) działa PTT?
+			 - po puszczeniu PTT linijka SWR leci do końca czasami i powoduje generowanie błądu
+				 - może jest pomiar podczas odbioru jeszcze?
+				 - czy nie ma za dużych pojemności na wyj couplera -> inne dla FWD i inne dla REF (REF > FWD)
+			 - po przekroczeniu prądu brak kodu BCD?
+ 	 - ver. 1.9.12
+ 	 	 - poprawienie PEP; oldBandIdx; alternatywne we/wy
  	 - ver. 1.9.11
  	 	 - obsługa 3 tłumików
  	 - ver. 1.9.10
@@ -156,6 +150,7 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 #define diPin_Pmax        	12	// przekroczenie mocy sterowania (na wejściu)
 #define diPin_SWRmax      	13	// przekroczenie SWR na wyjściu antenowym
 
+#ifdef ALTER
 #define doPin_ATT1			14	// sterowanie przekaźnikiem pierwszego tłumika; stan aktywny niski
 #define doPin_ATT2			15	// sterowanie przekaźnikiem drugiego tłumika; stan aktywny niski
 #define doPin_ATT3			16	// sterowanie przekaźnikiem trzeciego tłumika; stan aktywny niski
@@ -164,6 +159,16 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 #define diPin_bandData_B  	18	// band data B
 #define diPin_bandData_C  	19	// band data C
 #define diPin_bandData_D  	20	// band data D
+#else
+#define doPin_ATT1			18	// sterowanie przekaźnikiem pierwszego tłumika; stan aktywny niski
+#define doPin_ATT2			19	// sterowanie przekaźnikiem drugiego tłumika; stan aktywny niski
+#define doPin_ATT3			20	// sterowanie przekaźnikiem trzeciego tłumika; stan aktywny niski
+
+#define diPin_bandData_A  	14	// band data A
+#define diPin_bandData_B  	15	// band data B
+#define diPin_bandData_C  	16	// band data C
+#define diPin_bandData_D  	17	// band data D
+#endif
 //
 // D20, D21 magistrala I2C -> nie do wykorzystania
 // digital pin 22-46 used by UTFT (resistive touch)
@@ -225,7 +230,7 @@ bool errLedValue;
 #define aux2VoltageFactor (inputFactorVoltage * (15.0/5.0)) // 5V Input = 15V PA
 #ifdef ACS758
 #define pa1AmperFactor (inputFactorVoltage * (125/2.5))    // 20mV/A ACS758LCB-100B
-#define pa1AmperOffset (1023/5 * 2.505)                     // 2.5V z czujnika Hallla -> zmierzyć i wstawić
+#define pa1AmperOffset (1023/5 * 2.555)                     // 2.5V z czujnika Hallla -> zmierzyć i wstawić
 #else
 #define pa1AmperFactor (inputFactorVoltage * (65.0/5.0))    // 1k Ris w BTS50085
 #define pa1AmperOffset (0.0)                     // 0.0V	- pomiar z BTS50085 - od zera
@@ -274,14 +279,15 @@ enum
 byte ATT[BAND_NUM] = {ATT1, ATT1, ATT1, ATT1, ATT1, ATT2, ATT2, ATT2, ATT2, ATT3};
 String BAND[BAND_NUM] = {"    160", "    80", "    40", "    30", "    20","    17", "    15","    12", "    10", "     6"};
 byte bandIdx = 1;
+byte oldBandIdx = 0;
 byte AutoBandIdx = 15;
 
 #define thresholdCurrent           1.0
 #define thresholdPower             5.0
 #define thresholdSWR               3.5		// zmiana na 3.5 dla HYO
-#define thresholdTemperaturAirOn1   39
+#define thresholdTemperaturAirOn1   55
 #define thresholdTemperaturTransistorMax	70		// temperatura tranzystora (z termistora nr 1), przy której PA jest blokowane - STBY
-#define thresholdTemperaturAirOn2   49
+#define thresholdTemperaturAirOn2   50
 
 String infoString = "";
 String warningString = "";		// nieużywany
@@ -802,8 +808,8 @@ InfoBox modeBox("MODE", "", 395, 60, 32, 200, 0, 0, vgaValueColor, vgaBackground
 
 InfoBox bandBox("LPF", "m", 20, 20, 72, 350, 0, 0, vgaValueColor, vgaBackgroundColor, GroteskBold32x64);
 
-InfoBox pa1AmperBox("PA 1", "A", 20, 340, 32, 125, 0, 32.0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
-InfoBox drainVoltageBox("DRAIN", "V", 20, 380, 32, 125, 48, 54, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
+InfoBox pa1AmperBox("PA 1", "A", 20, 340, 32, 125, 0, 62.0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
+InfoBox drainVoltageBox("DRAIN", "V", 20, 380, 32, 125, 48, 58, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
 
 InfoBox aux1VoltageBox("AUX ", "V", 170, 380, 32, 125, 11, 15, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
 //InfoBox aux1VoltageBox("AUX R", "V", 170, 340, 32, 125, 11, 15, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
@@ -819,7 +825,7 @@ InfoBox temperaturBox1("", "`C", 170, 340, 32, 125, 10, 70, vgaValueColor, vgaBa
 InfoBox temperaturBox2("", "`C", 320, 340, 32, 125, 10, 70, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
 
 //InfoBox temperaturBox2("", "`C", 320, 380, 32, 125, 10, 60, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
-InfoBox temperaturBox3("", "`C", 320, 380, 32, 125, 10, 60, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
+InfoBox temperaturBox3("", "`C", 320, 380, 32, 125, 10, 65, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
 
 // wypełniacz pustego boksu
 //InfoBox emptyBox("", "", 170, 380, 32, 125, 0.0, 0.0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
@@ -830,7 +836,16 @@ InfoBox txRxBox("", "", 645, 340, 72, 135, 0, 0, vgaValueColor, vgaBackgroundCol
 // title, unit, xPos, yPos, height, width, minValue, maxValue, warnValue1, warnValue2, colorBar, colorBack, noOffHelplines
 //DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 2500, 750, 1750, vgaBarColor, vgaBackgroundColor, 10);
 #ifdef SP2HYO
-DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 1250, 375, 875, vgaBarColor, vgaBackgroundColor, 10);
+//DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 3000, 900, 2100, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 3,0kw
+//DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 2500, 750, 1750, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 2,5kw
+DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 2000, 600, 1400, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 2,0kw
+//DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 1800, 540, 1260, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 1,8kw
+//DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 1500, 450, 1050, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 1,5kw
+//DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 1250, 375, 875, vgaBarColor, vgaBackgroundColor, 10);     // // Wybor wskaznika PWR_skali 1,25kw
+//DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 1000, 300, 700, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 1,0kw
+//DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 750, 225, 525, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 0,75kw
+//DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 650, 195, 455, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 0,65kw
+//DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 500, 150, 350, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 0,5kw
 #endif
 #ifdef SP3JDZ
 DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 500, 150, 350, vgaBarColor, vgaBackgroundColor, 10);
@@ -944,7 +959,7 @@ void setup()
 	//myGLCD.print("DJ8QP ", RIGHT, 20);
 	//myGLCD.print("DC5ME ", RIGHT, 40);
 	myGLCD.setFont(SmallFont);
-	myGLCD.print("V1.9.11  ", RIGHT, 60);
+	myGLCD.print("V1.9.12  ", RIGHT, 60);
 
 	// Init the grafic objects
 	modeBox.init();
@@ -1363,9 +1378,13 @@ void loop()
 		if (AutoBandIdx >= 0 and AutoBandIdx <= 9)
 		{
 			bandIdx = AutoBandIdx;
-			bandBox.setText(BAND[bandIdx]);
-			pwrBar.resetValueMax();
-			swrBar.resetValueMax();
+			if (bandIdx != oldBandIdx)
+			{
+				bandBox.setText(BAND[bandIdx]);
+				pwrBar.resetValueMax();
+				swrBar.resetValueMax();
+				oldBandIdx = bandIdx;
+			}
 		}
 	}
 
@@ -1390,77 +1409,81 @@ void loop()
 	}
 	if (pttValue == false and (pa1AmperBox.getValue() < thresholdCurrent))
 	{
-		switch (bandIdx)
+		if (bandIdx != oldBandIdx)
 		{
-		case 0:		// 160m
-			digitalWrite(doPin_Band_D, 0);
-			digitalWrite(doPin_Band_C, 0);
-			digitalWrite(doPin_Band_B, 0);
-			digitalWrite(doPin_Band_A, 0);
-			break;
-		case 1:		// 80m
-			digitalWrite(doPin_Band_D, 0);
-			digitalWrite(doPin_Band_C, 0);
-			digitalWrite(doPin_Band_B, 0);
-			digitalWrite(doPin_Band_A, 1);
-			break;
-		case 2:		// 40m
-			digitalWrite(doPin_Band_D, 0);
-			digitalWrite(doPin_Band_C, 0);
-			digitalWrite(doPin_Band_B, 1);
-			digitalWrite(doPin_Band_A, 0);
-			break;
-		case 3:		// 30m
-			digitalWrite(doPin_Band_D, 0);
-			digitalWrite(doPin_Band_C, 0);
-			digitalWrite(doPin_Band_B, 1);
-			digitalWrite(doPin_Band_A, 1);
-			break;
-		case 4:		// 20m
-			digitalWrite(doPin_Band_D, 0);
-			digitalWrite(doPin_Band_C, 1);
-			digitalWrite(doPin_Band_B, 0);
-			digitalWrite(doPin_Band_A, 0);
-			break;
-		case 5:		// 17m
-			digitalWrite(doPin_Band_D, 0);
-			digitalWrite(doPin_Band_C, 1);
-			digitalWrite(doPin_Band_B, 0);
-			digitalWrite(doPin_Band_A, 1);
-			break;
-		case 6:		// 15m
-			digitalWrite(doPin_Band_D, 0);
-			digitalWrite(doPin_Band_C, 1);
-			digitalWrite(doPin_Band_B, 1);
-			digitalWrite(doPin_Band_A, 0);
-			break;
-		case 7:		// 12m
-			digitalWrite(doPin_Band_D, 0);
-			digitalWrite(doPin_Band_C, 1);
-			digitalWrite(doPin_Band_B, 1);
-			digitalWrite(doPin_Band_A, 1);
-			break;
-		case 8:		// 10m
-			digitalWrite(doPin_Band_D, 1);
-			digitalWrite(doPin_Band_C, 0);
-			digitalWrite(doPin_Band_B, 0);
-			digitalWrite(doPin_Band_A, 0);
-			break;
-		case 9:		// 6m
-			digitalWrite(doPin_Band_D, 1);
-			digitalWrite(doPin_Band_C, 0);
-			digitalWrite(doPin_Band_B, 0);
-			digitalWrite(doPin_Band_A, 1);
-			break;
-		default:
-			break;
+			switch (bandIdx)
+			{
+			case 0:		// 160m
+				digitalWrite(doPin_Band_D, 0);
+				digitalWrite(doPin_Band_C, 0);
+				digitalWrite(doPin_Band_B, 0);
+				digitalWrite(doPin_Band_A, 0);
+				break;
+			case 1:		// 80m
+				digitalWrite(doPin_Band_D, 0);
+				digitalWrite(doPin_Band_C, 0);
+				digitalWrite(doPin_Band_B, 0);
+				digitalWrite(doPin_Band_A, 1);
+				break;
+			case 2:		// 40m
+				digitalWrite(doPin_Band_D, 0);
+				digitalWrite(doPin_Band_C, 0);
+				digitalWrite(doPin_Band_B, 1);
+				digitalWrite(doPin_Band_A, 0);
+				break;
+			case 3:		// 30m
+				digitalWrite(doPin_Band_D, 0);
+				digitalWrite(doPin_Band_C, 0);
+				digitalWrite(doPin_Band_B, 1);
+				digitalWrite(doPin_Band_A, 1);
+				break;
+			case 4:		// 20m
+				digitalWrite(doPin_Band_D, 0);
+				digitalWrite(doPin_Band_C, 1);
+				digitalWrite(doPin_Band_B, 0);
+				digitalWrite(doPin_Band_A, 0);
+				break;
+			case 5:		// 17m
+				digitalWrite(doPin_Band_D, 0);
+				digitalWrite(doPin_Band_C, 1);
+				digitalWrite(doPin_Band_B, 0);
+				digitalWrite(doPin_Band_A, 1);
+				break;
+			case 6:		// 15m
+				digitalWrite(doPin_Band_D, 0);
+				digitalWrite(doPin_Band_C, 1);
+				digitalWrite(doPin_Band_B, 1);
+				digitalWrite(doPin_Band_A, 0);
+				break;
+			case 7:		// 12m
+				digitalWrite(doPin_Band_D, 0);
+				digitalWrite(doPin_Band_C, 1);
+				digitalWrite(doPin_Band_B, 1);
+				digitalWrite(doPin_Band_A, 1);
+				break;
+			case 8:		// 10m
+				digitalWrite(doPin_Band_D, 1);
+				digitalWrite(doPin_Band_C, 0);
+				digitalWrite(doPin_Band_B, 0);
+				digitalWrite(doPin_Band_A, 0);
+				break;
+			case 9:		// 6m
+				digitalWrite(doPin_Band_D, 1);
+				digitalWrite(doPin_Band_C, 0);
+				digitalWrite(doPin_Band_B, 0);
+				digitalWrite(doPin_Band_A, 1);
+				break;
+			default:
+				break;
+			}
+			// wyłączenie tłumików
+			digitalWrite(ATT1, HIGH);
+			digitalWrite(ATT2, HIGH);
+			digitalWrite(ATT3, HIGH);
+			// włączenie tłumika stosownie do wybranego pasma
+			digitalWrite(ATT[bandIdx], LOW);
+			oldBandIdx = bandIdx;
 		}
-		// wyłączenie tłumików
-		digitalWrite(ATT1, HIGH);
-		digitalWrite(ATT2, HIGH);
-		digitalWrite(ATT3, HIGH);
-		// włączenie tłumika stosownie do wybranego pasma
-		digitalWrite(ATT[bandIdx], LOW);
 	}
 
 	if ((ImaxValue or TermostatValue or PmaxValue or SWRmaxValue or SWRLPFmaxValue or SWR_ster_max or TemperaturaTranzystoraMaxValue or not genOutputEnable)  and toogle500ms)
