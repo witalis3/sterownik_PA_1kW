@@ -31,6 +31,7 @@
 				 - może jest pomiar podczas odbioru jeszcze?
 				 - czy nie ma za dużych pojemności na wyj couplera -> inne dla FWD i inne dla REF (REF > FWD)
 			 - po przekroczeniu prądu brak kodu BCD?
+	 - ver. 1.9.13 poprawienie błędu od oldBandIdx (nie przełączał LPFów)
  	 - ver. 1.9.12
  	 	 - poprawienie PEP; oldBandIdx; alternatywne we/wy
  	 - ver. 1.9.11
@@ -1383,7 +1384,7 @@ void loop()
 				bandBox.setText(BAND[bandIdx]);
 				pwrBar.resetValueMax();
 				swrBar.resetValueMax();
-				oldBandIdx = bandIdx;
+				//oldBandIdx = bandIdx;	-> zapamiętanie oldBnadIdx dopiero po przełączaniu LPFa
 			}
 		}
 	}
