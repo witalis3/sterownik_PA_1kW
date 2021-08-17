@@ -10,7 +10,7 @@
 
 #define ACS758	// pomiar prądu czujnikiem Halla
 #define SP2HYO
-#define ALTER	// inne przyporządkowanie wejść dla kodu DCBA i wyjść dla tłumików
+//#define ALTER	// inne przyporządkowanie wejść dla kodu DCBA i wyjść dla tłumików
 //#define DEBUG
 
 

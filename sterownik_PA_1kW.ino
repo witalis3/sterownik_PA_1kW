@@ -31,6 +31,7 @@
 				 - może jest pomiar podczas odbioru jeszcze?
 				 - czy nie ma za dużych pojemności na wyj couplera -> inne dla FWD i inne dla REF (REF > FWD)
 			 - po przekroczeniu prądu brak kodu BCD?
+	 - ver. 1.9.14 poprawienie poprawki ;-)
 	 - ver. 1.9.13 poprawienie błędu od oldBandIdx (nie przełączał LPFów)
  	 - ver. 1.9.12
  	 	 - poprawienie PEP; oldBandIdx; alternatywne we/wy
@@ -124,6 +125,7 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 #define aiPin_temperatura1	7	// temperatura pierwszego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
 #define aiPin_temperatura2	8	// temperatura drugiego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
 #define aiPin_temperatura3	9	// temperatura radiatora
+// wyjścia sterujące LPFem:
 #define doPin_Band_A   		64	// doPin band A; 	A10
 #define doPin_Band_B   		65	// doPin band B; 	A11
 #define doPin_Band_C   		66	// doPin band C; 	A12
@@ -273,9 +275,15 @@ enum
 };
 enum
 {
+#ifdef ALTER
 	ATT1 = 14,
 	ATT2,
 	ATT3
+#else
+	ATT1 = 18,
+	ATT2,
+	ATT3
+#endif
 };
 byte ATT[BAND_NUM] = {ATT1, ATT1, ATT1, ATT1, ATT1, ATT2, ATT2, ATT2, ATT2, ATT3};
 String BAND[BAND_NUM] = {"    160", "    80", "    40", "    30", "    20","    17", "    15","    12", "    10", "     6"};
@@ -960,7 +968,7 @@ void setup()
 	//myGLCD.print("DJ8QP ", RIGHT, 20);
 	//myGLCD.print("DC5ME ", RIGHT, 40);
 	myGLCD.setFont(SmallFont);
-	myGLCD.print("V1.9.12  ", RIGHT, 60);
+	myGLCD.print("V1.9.14  ", RIGHT, 60);
 
 	// Init the grafic objects
 	modeBox.init();
