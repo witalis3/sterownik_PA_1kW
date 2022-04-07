@@ -31,6 +31,7 @@
 				 - może jest pomiar podczas odbioru jeszcze?
 				 - czy nie ma za dużych pojemności na wyj couplera -> inne dla FWD i inne dla REF (REF > FWD)
 			 - po przekroczeniu prądu brak kodu BCD?
+	 - ver. 1.9.15 wybór trybu wyświetlania mocy na PINie: 2kW/500W (lub inne wybrane)
 	 - ver. 1.9.14 poprawienie poprawki ;-)
 	 - ver. 1.9.13 poprawienie błędu od oldBandIdx (nie przełączał LPFów)
  	 - ver. 1.9.12
@@ -172,6 +173,7 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 #define diPin_bandData_C  	16	// band data C
 #define diPin_bandData_D  	17	// band data D
 #endif
+#define diPin_MniejszaMoc	21	// ustalenie skali wskaźnika mocy (np. 2kW/500W)
 //
 // D20, D21 magistrala I2C -> nie do wykorzystania
 // digital pin 22-46 used by UTFT (resistive touch)
@@ -182,6 +184,7 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 #define CZAS_REAKCJI 1000			// the time [ms] after which the writing into EEPROM takes place
 boolean byla_zmiana = false;
 unsigned long czas_zmiany;
+boolean airBox1Manual = false;
 
 // Define the analogValue variables
 float pwrForwardValue;
@@ -567,10 +570,10 @@ class DisplayBar
 	InfoBox *ptrMaxBox;
 
 public:
+
 	DisplayBar(String title, String unit, int xPos, int yPos, int height,
 			int width, float minValue, float maxValue, float warnValue1,
 			float warnValue2, int colorBar, int colorBack, int noOffHelplines)
-
 	{
 		// Store parameter
 		_title = title;
@@ -607,6 +610,7 @@ public:
 		_showMax = false;
 
 	}
+
 
 	void init()
 	{
@@ -809,6 +813,22 @@ public:
 		return ((x > _xPos and x < _xPos + _width)
 				and (y > _yPos and y < _yPos + _height));
 	}
+	void setMinValue(float value)
+	{
+		_minValue = value;
+	}
+	void setMaxValue(float value)
+	{
+		_maxValue = value;
+	}
+	void setWarnValue1(float value)
+	{
+		_warnValue1 = value;
+	}
+	void setWarnValue2(float value)
+	{
+		_warnValue2 = value;
+	}
 };
 // SETUP the grafic objects
 //                        title         unit    xPos  yPos  height  width, _minValue,  _maxValue,  colorValue       colorBack             font
@@ -842,12 +862,19 @@ InfoBox temperaturBox3("", "`C", 320, 380, 32, 125, 10, 65, vgaValueColor, vgaBa
 InfoBox msgBox("", "", 20, 420, 32, 760, 0, 0, vgaValueColor, vgaBackgroundColor, Grotesk16x32);
 InfoBox txRxBox("", "", 645, 340, 72, 135, 0, 0, vgaValueColor, vgaBackgroundColor, GroteskBold32x64);
 
+DisplayBar swrBar("SWR", "", 20, 226, 80, 760, 1, 5, 3, 4, vgaBarColor, vgaBackgroundColor, 16);
 // title, unit, xPos, yPos, height, width, minValue, maxValue, warnValue1, warnValue2, colorBar, colorBack, noOffHelplines
 //DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 2500, 750, 1750, vgaBarColor, vgaBackgroundColor, 10);
 #ifdef SP2HYO
+DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 2000, 600, 1400, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 2,0kw
+float minValue = 0.0;
+float maxValue = 650.0;
+float warnValue1 = 195.0;
+float warnValue2 = 455.0;
+#endif
+//pwrBar.DisplayBar("PWR", "W", 20, 126, 80, 760, 0, 650, 195, 455, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 0,65kw
 //DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 3000, 900, 2100, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 3,0kw
 //DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 2500, 750, 1750, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 2,5kw
-DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 2000, 600, 1400, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 2,0kw
 //DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 1800, 540, 1260, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 1,8kw
 //DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 1500, 450, 1050, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 1,5kw
 //DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 1250, 375, 875, vgaBarColor, vgaBackgroundColor, 10);     // // Wybor wskaznika PWR_skali 1,25kw
@@ -855,11 +882,10 @@ DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 2000, 600, 1400, vgaBarColor,
 //DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 750, 225, 525, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 0,75kw
 //DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 650, 195, 455, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 0,65kw
 //DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 500, 150, 350, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 0,5kw
-#endif
+
 #ifdef SP3JDZ
 DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 500, 150, 350, vgaBarColor, vgaBackgroundColor, 10);
 #endif
-DisplayBar swrBar("SWR", "", 20, 226, 80, 760, 1, 5, 3, 4, vgaBarColor, vgaBackgroundColor, 16);
 
 PushButton Down(20, 20, 72, 165);
 PushButton Up(185, 20, 72, 165);
@@ -873,6 +899,17 @@ bool UpdatePowerAndVSWR();
 
 void setup()
 {
+	pinMode(diPin_MniejszaMoc, INPUT_PULLUP);
+	#ifdef SP2HYO
+	if (digitalRead(diPin_MniejszaMoc) == LOW)
+	{
+		pwrBar.setMinValue(minValue);
+		pwrBar.setMaxValue(maxValue);
+		pwrBar.setWarnValue1(warnValue1);
+		pwrBar.setWarnValue2(warnValue2);
+	}
+	#endif
+
 	// Run the setup and init everything
 #ifdef DEBUG
 		Serial.begin(115200);
@@ -968,7 +1005,7 @@ void setup()
 	//myGLCD.print("DJ8QP ", RIGHT, 20);
 	//myGLCD.print("DC5ME ", RIGHT, 40);
 	myGLCD.setFont(SmallFont);
-	myGLCD.print("V1.9.14  ", RIGHT, 60);
+	myGLCD.print("V1.9.15  ", RIGHT, 60);
 
 	// Init the grafic objects
 	modeBox.init();
@@ -1308,7 +1345,16 @@ void loop()
 		}
 		else if (airBox1.isTouchInside(touchX, touchY))
 		{
-			airBox1.setText("ON");	// nie zadziała -> samo się wyłączy po sprawdzeniu temperatury
+			if (airBox1Manual)
+			{
+				airBox1.setText("OFF");
+				airBox1Manual = false;
+			}
+			else
+			{
+				airBox1.setText("ON");
+				airBox1Manual = true;
+			}
 		}
 		else if (airBox2.isTouchInside(touchX, touchY))
 		{
@@ -1399,13 +1445,20 @@ void loop()
 
 	//-----------------------------------------------------------------------------
 	// Write to outputs
-	if (airBox1.getText() == "OFF")
+	if (airBox1Manual)
 	{
-		digitalWrite(doPin_air1, false);
+		digitalWrite(doPin_air1, true);
 	}
 	else
 	{
-		digitalWrite(doPin_air1, true);
+		if (airBox1.getText() == "OFF")
+		{
+			digitalWrite(doPin_air1, false);
+		}
+		else
+		{
+			digitalWrite(doPin_air1, true);
+		}
 	}
 
 	if (airBox2.getText() == "OFF")
