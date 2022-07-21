@@ -116,7 +116,7 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
  *
  */
 
-//					     	0	// wolne
+#define BL_ONOFF_PIN     	54	// A0
 #define aiPin_pwrForward   	1	// A1
 #define aiPin_pwrReturn    	2	// A2
 #define aiPin_drainVoltage 	3
@@ -570,7 +570,6 @@ class DisplayBar
 	InfoBox *ptrMaxBox;
 
 public:
-
 	DisplayBar(String title, String unit, int xPos, int yPos, int height,
 			int width, float minValue, float maxValue, float warnValue1,
 			float warnValue2, int colorBar, int colorBack, int noOffHelplines)
@@ -614,6 +613,10 @@ public:
 
 	void init()
 	{
+		// na potrzeby zmiany skali mocy:
+		_deltaMaxNeg = _maxValue / 100 * 4; // max decrement 4% of the max value
+		_rangeValue = _maxValue - _minValue;
+
 		// Called by main setup
 		// Background
 		myGLCD.setBackColor(_colorBack);
@@ -865,13 +868,15 @@ InfoBox txRxBox("", "", 645, 340, 72, 135, 0, 0, vgaValueColor, vgaBackgroundCol
 DisplayBar swrBar("SWR", "", 20, 226, 80, 760, 1, 5, 3, 4, vgaBarColor, vgaBackgroundColor, 16);
 // title, unit, xPos, yPos, height, width, minValue, maxValue, warnValue1, warnValue2, colorBar, colorBack, noOffHelplines
 //DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 2500, 750, 1750, vgaBarColor, vgaBackgroundColor, 10);
+
 #ifdef SP2HYO
-DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 2000, 600, 1400, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 2,0kw
-float minValue = 0.0;
-float maxValue = 650.0;
-float warnValue1 = 195.0;
-float warnValue2 = 455.0;
+	DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 2000, 600, 1400, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 2,0kw
+	float minValue = 0.0;
+	float maxValue = 650.0;
+	float warnValue1 = 195.0;
+	float warnValue2 = 455.0;
 #endif
+
 //pwrBar.DisplayBar("PWR", "W", 20, 126, 80, 760, 0, 650, 195, 455, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 0,65kw
 //DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 3000, 900, 2100, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 3,0kw
 //DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 2500, 750, 1750, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 2,5kw
@@ -899,8 +904,11 @@ bool UpdatePowerAndVSWR();
 
 void setup()
 {
+
+	pinMode(BL_ONOFF_PIN, OUTPUT);  	//backlight
+	digitalWrite(BL_ONOFF_PIN, LOW);	//off
+#ifdef SP2HYO
 	pinMode(diPin_MniejszaMoc, INPUT_PULLUP);
-	#ifdef SP2HYO
 	if (digitalRead(diPin_MniejszaMoc) == LOW)
 	{
 		pwrBar.setMinValue(minValue);
@@ -908,7 +916,7 @@ void setup()
 		pwrBar.setWarnValue1(warnValue1);
 		pwrBar.setWarnValue2(warnValue2);
 	}
-	#endif
+#endif
 
 	// Run the setup and init everything
 #ifdef DEBUG
@@ -988,6 +996,7 @@ void setup()
 	myGLCD.print("LDMOS-PA  2kW", CENTER, 50);
 	myGLCD.setFont(Grotesk16x32);
 	myGLCD.print("160m - 6m", CENTER, 150);
+	digitalWrite(BL_ONOFF_PIN, HIGH);	//backlight on
 	//myGLCD.print("BLF 188XR", CENTER, 200);
 
 /*  myGLCD.setFont(franklingothic_normal);
