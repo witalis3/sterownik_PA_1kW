@@ -23,7 +23,6 @@
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/core/variant}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/SoftwareSerial/src}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/UTFT}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/URTouch}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/SPI/src}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/UTouch}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/EEPROM/src}&quot;"/>
@@ -36,7 +35,6 @@
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/core/variant}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/SoftwareSerial/src}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/UTFT}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/URTouch}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/SPI/src}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/UTouch}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/EEPROM/src}&quot;"/>
@@ -49,7 +47,6 @@
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/core/variant}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/SoftwareSerial/src}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/UTFT}&quot;"/>
-									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/URTouch}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/SPI/src}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/UTouch}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/EEPROM/src}&quot;"/>

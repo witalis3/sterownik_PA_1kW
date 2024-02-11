@@ -31,6 +31,7 @@
 				 - może jest pomiar podczas odbioru jeszcze?
 				 - czy nie ma za dużych pojemności na wyj couplera -> inne dla FWD i inne dla REF (REF > FWD)
 			 - po przekroczeniu prądu brak kodu BCD?
+	- ver. 1.10.0 wersja dla SP3OCC
 	 - ver. 1.9.15 wybór trybu wyświetlania mocy na PINie: 2kW/500W (lub inne wybrane)
 	 - ver. 1.9.14 poprawienie poprawki ;-)
 	 - ver. 1.9.13 poprawienie błędu od oldBandIdx (nie przełączał LPFów)
@@ -993,7 +994,7 @@ void setup()
 
 	myGLCD.setFont(GroteskBold32x64);
 	myGLCD.setColor(vgaValueColor);
-	myGLCD.print("LDMOS-PA  2kW", CENTER, 50);
+	myGLCD.print("PA  A600", CENTER, 50);
 	myGLCD.setFont(Grotesk16x32);
 	myGLCD.print("160m - 6m", CENTER, 150);
 	digitalWrite(BL_ONOFF_PIN, HIGH);	//backlight on
@@ -1014,7 +1015,7 @@ void setup()
 	//myGLCD.print("DJ8QP ", RIGHT, 20);
 	//myGLCD.print("DC5ME ", RIGHT, 40);
 	myGLCD.setFont(SmallFont);
-	myGLCD.print("V1.9.15  ", RIGHT, 60);
+	myGLCD.print("V1.10.0  ", RIGHT, 60);
 
 	// Init the grafic objects
 	modeBox.init();
