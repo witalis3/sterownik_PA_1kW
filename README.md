@@ -6,8 +6,8 @@ Sterownik PA bazujący na wyświetlaczu dotykowym i Arduino Mega 2560.
   - moc wyjściowa
   - SWR
   - pasmo
-  - tryb pracy:
-- zabezpieczenia od przekroczenia
+  - tryb pracy
+- zabezpieczenia od przekroczenia:
   - pobieranego prądu
   - temperatury tranzystorów
   - SWR
