@@ -57,19 +57,14 @@
 			<locationURI>ECLIPSE_HOME/arduinoPlugin/packages/arduino/hardware/avr/1.8.2/libraries/SoftwareSerial</locationURI>
 		</link>
 		<link>
-			<name>libraries/URTouch</name>
-			<type>2</type>
-			<location>C:/Users/48515/Documents/Arduino/libraries/URTouch</location>
-		</link>
-		<link>
 			<name>libraries/UTFT</name>
 			<type>2</type>
-			<location>C:/Users/48515/Documents/Arduino/libraries/UTFT</location>
+			<location>C:/Users/witol/Documents/Arduino/libraries/UTFT</location>
 		</link>
 		<link>
 			<name>libraries/UTouch</name>
 			<type>2</type>
-			<location>C:/Users/48515/Documents/Arduino/libraries/UTouch</location>
+			<location>C:/Users/witol/Documents/Arduino/libraries/UTouch</location>
 		</link>
 	</linkedResources>
 </projectDescription>
