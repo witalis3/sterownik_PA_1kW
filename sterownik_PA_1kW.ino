@@ -19,19 +19,33 @@
  	 	 	 	 - WAKE otwarty
  	 - biblioteki UTouch i UTFT ze strony sprzedawcy (buydisplay)
  	 - fonty ze strony rinkydinkelectronics
+ Pomiar temperatury jak w Wolfie
 
- Całkowity pobór prądu z 5V (wyświetlacz, shield, arduino mega 2560) około 400mA.
-
+ Całkowity pobór prądu z 5V (wyświetlacz, shield, arduino mega 2560) około 400mA; pobór prądu z 12V:?
+- schemat sterownika: KICAD5 C:\KICAD\projekty\PA_500W\sterownik_PA_1kW_1_3_SP3OCC
+- schemat zabezpieczenia: KICAD6 C:\KICAD\projekty\PA_500W\zabezpieczenie nadprądowe\protection_module_SP3OCC
+- moduł PA A600 V3 Razvan (M0HZH)
+-----------------------------------------------------------------
  ToDo
- 	 - na razie nic
- 	 - zauważone usterki
- 	 	 - nie pamiętam
-			 - przy braku 50V (alarm od tego napięcia) działa PTT?
-			 - po puszczeniu PTT linijka SWR leci do końca czasami i powoduje generowanie błądu
-				 - może jest pomiar podczas odbioru jeszcze?
-				 - czy nie ma za dużych pojemności na wyj couplera -> inne dla FWD i inne dla REF (REF > FWD)
-			 - po przekroczeniu prądu brak kodu BCD?
 	- ver. 1.10.0 wersja dla SP3OCC
+ 	 	 - zrobione! pomiar prądu ACS713 30A
+ 	 	 - zrobione! pomiar temperatury tranzystorów: czujniki KTY81/110
+ 	 	 	 - spr wyświetlanie w/w
+
+ 	 	 - pomiar temperatury radiatora LM35
+ 	 	 - sterowanie pracą wentylatora
+ 	 	 	 - na początek jeden stopień
+ 	 	 - obsługa PTT
+ 	 	 	 - sprawdzenie, czy TS480 daje pik przy przejściu na nadawanie (ew. sekwencer)
+ 	 	 	 - przejście PTT przez sterownik
+ 	 	 	 	 - blokada PTT przy wystąpieniu błędu
+ 	 	 	 	 	 - komunikat
+ 	 	 	 	 	 - usunięcie komunikatu z panelu
+ 	 	 	 	 	 	 - usunięcie blokady
+ 	 	 - informacje o błędach/zadziałaniu komparatorów z płytki blokady
+ 	 	  - prąd
+ 	 	  - temperatury
+
 	 - ver. 1.9.15 wybór trybu wyświetlania mocy na PINie: 2kW/500W (lub inne wybrane)
 	 - ver. 1.9.14 poprawienie poprawki ;-)
 	 - ver. 1.9.13 poprawienie błędu od oldBandIdx (nie przełączał LPFów)
@@ -81,10 +95,18 @@
 
 	- gdy SWR na antenie > 3
 		- info na wyjściu D4 -> stan niski
-
 		- na razie nie:
 			- przejście na STBY
 				- komunikat na dole
+ ----------------------------------------------------------------
+- jakieś starocie do ewentualnego sprawdzenia:
+ 	 - zauważone usterki
+ 	 	 - nie pamiętam
+			 - przy braku 50V (alarm od tego napięcia) działa PTT?
+			 - po puszczeniu PTT linijka SWR leci do końca czasami i powoduje generowanie błądu
+				 - może jest pomiar podczas odbioru jeszcze?
+				 - czy nie ma za dużych pojemności na wyj couplera -> inne dla FWD i inne dla REF (REF > FWD)
+			 - po przekroczeniu prądu brak kodu BCD?
  */
 
 //#define CZAS_PETLI
@@ -118,23 +140,26 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
  */
 
 #define BL_ONOFF_PIN     	54	// A0
-#define aiPin_pwrForward   	1	// A1
-#define aiPin_pwrReturn    	2	// A2
+#define aiPin_pwrForward   	6	// A6
+#define aiPin_pwrReturn    	7	// A7
 #define aiPin_drainVoltage 	3
 #define aiPin_aux1Voltage  	4	// 12V
-//						  	5	// wolne
-#define aiPin_pa1Amper     	6	// prąd drenu
-#define aiPin_temperatura1	7	// temperatura pierwszego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
-#define aiPin_temperatura2	8	// temperatura drugiego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
-#define aiPin_temperatura3	9	// temperatura radiatora
+//						  		// wolne
+#define aiPin_pa1Amper     	15	// prąd drenu
+#define aiPin_temperatura1	12	//  temperatura pierwszego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
+#define aiPin_temperatura2	13	// temperatura drugiego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
+#define aiPin_temperatura3	14	// temperatura radiatora
 // wyjścia sterujące LPFem:
+
+/*
 #define doPin_Band_A   		64	// doPin band A; 	A10
 #define doPin_Band_B   		65	// doPin band B; 	A11
 #define doPin_Band_C   		66	// doPin band C; 	A12
 #define doPin_Band_D   		67	// doPin band D; 	A13
+*/
 
-#define doPin_air1         	68	// wentylator = A14
-#define doPin_air2         	69	// wentylator = A15
+#define doPin_air1          13 	// wentylator = A14
+#define doPin_air2         	59	// wentylator2 = A5
 
 /*
  * wejścia/wyjścia cyfrowe:
@@ -193,8 +218,8 @@ float pwrReturnValue;
 float drainVoltageValue;
 float aux1VoltageValue;
 float pa1AmperValue;
-float temperaturValue1;
-float temperaturValue2;
+volatile float temperaturValue1 = 0.0f;
+volatile float temperaturValue2 = 0.0f;
 float temperaturValue3;
 int forwardValue;		// odczyt napięcia padającego z direct couplera
 int forwardValueAvg;	// średnia z napięcia padającego z direct couplera
@@ -235,9 +260,9 @@ bool errLedValue;
 #define drainVoltageFactor (inputFactorVoltage * (60.0/5.0))// 5V Input = 60V PA
 #define aux1VoltageFactor (inputFactorVoltage * (30.0/5.0)) // 5V Input = 30V PA
 #define aux2VoltageFactor (inputFactorVoltage * (15.0/5.0)) // 5V Input = 15V PA
-#ifdef ACS758
-#define pa1AmperFactor (inputFactorVoltage * (125/2.5))    // 20mV/A ACS758LCB-100B
-#define pa1AmperOffset (1023/5 * 2.555)                     // 2.5V z czujnika Hallla -> zmierzyć i wstawić
+#ifdef ACS713
+#define pa1AmperFactor (inputFactorVoltage * (30/4.0))    // 133mV/A ACS713
+#define pa1AmperOffset (1023/5.0 * 0.5)                     // 0.5V z czujnika Hallla -> zmierzyć i wstawić ewentualnie
 #else
 #define pa1AmperFactor (inputFactorVoltage * (65.0/5.0))    // 1k Ris w BTS50085
 #define pa1AmperOffset (0.0)                     // 0.0V	- pomiar z BTS50085 - od zera
@@ -249,10 +274,11 @@ bool errLedValue;
 // zmienne na potrzeby pomiaru temperatury
 float Uref = 5.0;			// napięcie zasilające dzielnik pomiarowy temperatury
 float Vref = 5.0;			// napięcie odniesienia dla ADC
-int beta = 3500;			// współczynnik beta termistora
+//int beta = 3500;			// współczynnik beta termistora
 int R25 = 1800;				// rezystancja termistora w temperaturze 25C
-int Rf1 = 2677;				// rezystancja rezystora szeregowego z termistorem nr 1
-int Rf2 = 2685;				// rezystancja rezystora szeregowego z termistorem nr 2
+int Rf1 = 2200;				// rezystancja rezystora szeregowego  nr 1
+int Rf2 = 2200;				// rezystancja rezystora szeregowego  nr 2
+
 int Rf3 = 2700;				// rezystancja rezystora szeregowego z termistorem nr 3
 
 #define modeManualName "MANUALLY"
@@ -897,7 +923,8 @@ PushButton Down(20, 20, 72, 165);
 PushButton Up(185, 20, 72, 165);
 
 
-float getTemperatura(uint8_t pin, int Rf);
+void getTemperatura1(uint8_t pin, int Rf);
+void getTemperatura2(uint8_t pin, int Rf);
 void read_inputs();
 float calc_SWR(int forward, int ref);
 bool UpdatePowerAndVSWR();
@@ -967,10 +994,12 @@ void setup()
 	digitalWrite(doPin_blokada, LOW);
 	pinMode(doPin_errLED, OUTPUT);
 	pinMode(diPin_SWR_ster_max, INPUT_PULLUP);
+	/*
 	pinMode(doPin_Band_A, OUTPUT);
 	pinMode(doPin_Band_B, OUTPUT);
 	pinMode(doPin_Band_C, OUTPUT);
 	pinMode(doPin_Band_D, OUTPUT);
+	*/
 	pinMode(diPin_bandData_A, INPUT_PULLUP);
 	pinMode(diPin_bandData_B, INPUT_PULLUP);
 	pinMode(diPin_bandData_C, INPUT_PULLUP);
@@ -1483,6 +1512,10 @@ void loop()
 	{
 		if (bandIdx != oldBandIdx)
 		{
+			/*
+			 * ToDo przełączanie na LPF1-7
+			 */
+			/*
 			switch (bandIdx)
 			{
 			case 0:		// 160m
@@ -1548,6 +1581,7 @@ void loop()
 			default:
 				break;
 			}
+			*/
 			// wyłączenie tłumików
 			digitalWrite(ATT1, HIGH);
 			digitalWrite(ATT2, HIGH);
@@ -1622,12 +1656,47 @@ void loop()
 #endif
 }	// koniec głównej pętli
 
-float getTemperatura(uint8_t pin, int Rf)
+void getTemperatura1(uint8_t pin, int Rf)
 {
 	int u = analogRead(pin);
 	float U = Vref*u/1023;
-	float R = Rf*U/(Uref - U);
-	float T = 1/(log(R/R25)/beta + 1/298.15);
+	float therm_resistance = (-(float)Rf) * U / (-3.3f + U);
+	uint_fast8_t point_left = 0;
+	uint_fast8_t point_right = SENS_TABLE_COUNT - 1;
+	for (uint_fast8_t i = 0; i < SENS_TABLE_COUNT; i++) {
+		if (KTY81_120_sensTable[i][1] < therm_resistance)
+		{
+			point_left = i;
+		}
+	}
+	for (uint_fast8_t i = (SENS_TABLE_COUNT - 1); i > 0; i--)
+	{
+		if (KTY81_120_sensTable[i][1] >= therm_resistance)
+		{
+			point_right = i;
+		}
+	}
+	float power_left = (float)KTY81_120_sensTable[point_left][0];
+	float power_right = (float)KTY81_120_sensTable[point_right][0];
+	float part_point_left = therm_resistance - KTY81_120_sensTable[point_left][1];
+	float part_point_right = KTY81_120_sensTable[point_right][1] - therm_resistance;
+	float part_point = part_point_left / (part_point_left + part_point_right);
+	float TRX_RF_Temperature_measured = (power_left * (1.0f - part_point)) + (power_right * (part_point));
+
+	if (TRX_RF_Temperature_measured < -100.0f) {
+		TRX_RF_Temperature_measured = 75.0f;
+	}
+	if (TRX_RF_Temperature_measured < 0.0f) {
+		TRX_RF_Temperature_measured = 0.0f;
+	}
+
+	static float TRX_RF_Temperature1_averaged = 20.0f;
+	TRX_RF_Temperature1_averaged = TRX_RF_Temperature1_averaged * 0.995f + TRX_RF_Temperature_measured * 0.005f;
+
+	if (fabsf(TRX_RF_Temperature1_averaged - temperaturValue1) >= 1.0f)
+	{ // hysteresis
+		temperaturValue1 = TRX_RF_Temperature1_averaged;
+	}
 #ifdef DEBUGi
 	Serial.print("analogRead: ");
 	Serial.println(u);
@@ -1638,7 +1707,48 @@ float getTemperatura(uint8_t pin, int Rf)
 	Serial.print("T: ");
 	Serial.println(T);
 #endif
-	return T - 273.15;
+}
+void getTemperatura2(uint8_t pin, int Rf)
+{
+	int u = analogRead(pin);
+	float U = Vref*u/1023;
+	float therm_resistance = (-(float)Rf) * U / (-3.3f + U);
+	uint_fast8_t point_left = 0;
+	uint_fast8_t point_right = SENS_TABLE_COUNT - 1;
+	for (uint_fast8_t i = 0; i < SENS_TABLE_COUNT; i++) {
+		if (KTY81_120_sensTable[i][1] < therm_resistance)
+		{
+			point_left = i;
+		}
+	}
+	for (uint_fast8_t i = (SENS_TABLE_COUNT - 1); i > 0; i--)
+	{
+		if (KTY81_120_sensTable[i][1] >= therm_resistance)
+		{
+			point_right = i;
+		}
+	}
+	float power_left = (float)KTY81_120_sensTable[point_left][0];
+	float power_right = (float)KTY81_120_sensTable[point_right][0];
+	float part_point_left = therm_resistance - KTY81_120_sensTable[point_left][1];
+	float part_point_right = KTY81_120_sensTable[point_right][1] - therm_resistance;
+	float part_point = part_point_left / (part_point_left + part_point_right);
+	float TRX_RF_Temperature_measured = (power_left * (1.0f - part_point)) + (power_right * (part_point));
+
+	if (TRX_RF_Temperature_measured < -100.0f) {
+		TRX_RF_Temperature_measured = 75.0f;
+	}
+	if (TRX_RF_Temperature_measured < 0.0f) {
+		TRX_RF_Temperature_measured = 0.0f;
+	}
+
+	static float TRX_RF_Temperature2_averaged = 20.0f;
+	TRX_RF_Temperature2_averaged = TRX_RF_Temperature2_averaged * 0.995f + TRX_RF_Temperature_measured * 0.005f;
+
+	if (fabsf(TRX_RF_Temperature2_averaged - temperaturValue2) >= 1.0f)
+	{ // hysteresis
+		temperaturValue2 = TRX_RF_Temperature2_averaged;
+	}
 }
 
 void read_inputs()
@@ -1654,9 +1764,10 @@ void read_inputs()
 	pa1AmperValue = (analogRead(aiPin_pa1Amper) - pa1AmperOffset)*pa1AmperFactor;
 	if (pa1AmperValue < 0)
 		pa1AmperValue = 0;
-	temperaturValue1 = getTemperatura(aiPin_temperatura1, Rf1);
-	temperaturValue2 = getTemperatura(aiPin_temperatura2, Rf2);
-	temperaturValue3 = getTemperatura(aiPin_temperatura3, Rf3);
+	getTemperatura1(aiPin_temperatura1, Rf1);
+	getTemperatura2(aiPin_temperatura2, Rf2);
+
+	temperaturValue3 = 0.0f;
 
 	pttValue = not digitalRead(diPin_ptt);					// aktywny stan niski
 	stbyValue = digitalRead(diPin_stby);					// aktywny stan wysoki
