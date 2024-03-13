@@ -273,11 +273,11 @@ bool errLedValue;
 
 // zmienne na potrzeby pomiaru temperatury
 float Uref = 5.0;			// napięcie zasilające dzielnik pomiarowy temperatury
-float Vref = 5.0;			// napięcie odniesienia dla ADC
+float Vref = 4.833;			// napięcie odniesienia dla ADC
 //int beta = 3500;			// współczynnik beta termistora
 int R25 = 1800;				// rezystancja termistora w temperaturze 25C
-int Rf1 = 2200;				// rezystancja rezystora szeregowego  nr 1
-int Rf2 = 2200;				// rezystancja rezystora szeregowego  nr 2
+int Rf1 = 995;				// rezystancja rezystora szeregowego  nr 1
+int Rf2 = 995;				// rezystancja rezystora szeregowego  nr 2
 
 int Rf3 = 2700;				// rezystancja rezystora szeregowego z termistorem nr 3
 
@@ -922,14 +922,6 @@ DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 500, 150, 350, vgaBarColor, v
 PushButton Down(20, 20, 72, 165);
 PushButton Up(185, 20, 72, 165);
 
-
-void getTemperatura1(uint8_t pin, int Rf);
-void getTemperatura2(uint8_t pin, int Rf);
-void read_inputs();
-float calc_SWR(int forward, int ref);
-bool UpdatePowerAndVSWR();
-
-
 void setup()
 {
 
@@ -947,9 +939,7 @@ void setup()
 #endif
 
 	// Run the setup and init everything
-#ifdef DEBUG
-		Serial.begin(115200);
-#endif
+		Serial1.begin(115200);
 	if (eeprom_read_byte(0) != COLDSTART_REF)
 	{
 		EEPROM.write(1, bandIdx);
@@ -965,9 +955,9 @@ void setup()
 		bandIdx = EEPROM.read(1);
 		// read mode
 		mode = EEPROM.read(2);
-#ifdef DEBUG
-		Serial.println("reading bandIdx from memory: ");
-		Serial.println(bandIdx);
+#ifdef DEBUGi
+		Serial1.println("reading bandIdx from memory: ");
+		Serial1.println(bandIdx);
 #endif
 
 	}
@@ -1001,8 +991,8 @@ void setup()
 	pinMode(doPin_Band_D, OUTPUT);
 	*/
 	pinMode(diPin_bandData_A, INPUT_PULLUP);
-	pinMode(diPin_bandData_B, INPUT_PULLUP);
-	pinMode(diPin_bandData_C, INPUT_PULLUP);
+	//pinMode(diPin_bandData_B, INPUT_PULLUP);
+	//pinMode(diPin_bandData_C, INPUT_PULLUP);
 	pinMode(diPin_bandData_D, INPUT_PULLUP);
 
 	pinMode(doPin_air1, OUTPUT);
@@ -1014,13 +1004,14 @@ void setup()
 	pinMode(diPin_Imax, INPUT_PULLUP);
 	pinMode(diPin_Pmax, INPUT_PULLUP);
 	pinMode(diPin_SWRmax, INPUT_PULLUP);
+	/*
 	pinMode(doPin_ATT1, OUTPUT);
 	digitalWrite(doPin_ATT1, HIGH);	// stan aktywny niski
 	pinMode(doPin_ATT2, OUTPUT);
 	digitalWrite(doPin_ATT2, HIGH);	// stan aktywny niski
 	pinMode(doPin_ATT3, OUTPUT);
 	digitalWrite(doPin_ATT3, HIGH);	// stan aktywny niski
-
+*/
 	myGLCD.setFont(GroteskBold32x64);
 	myGLCD.setColor(vgaValueColor);
 	myGLCD.print("PA  A600", CENTER, 50);
@@ -1035,7 +1026,7 @@ void setup()
 	myGLCD.print("DL9MBI DO1FKP DO5HT K8FOD ON7PQ", CENTER, 350);
 	myGLCD.print("DE DJ8QP", CENTER, 375);
 */
-	delay(2000);
+	delay(1000);
 	myGLCD.clrScr();
 
 	// Set call sign and version
@@ -1082,9 +1073,9 @@ void setup()
 	drainVoltageBox.setFloat(drainVoltageValue, 1, 4, false);
 	aux1VoltageBox.setFloat(aux1VoltageValue, 1, 4, false);
 	pa1AmperBox.setFloat(pa1AmperValue, 1, 4, false);
-	temperaturBox1.setFloat(temperaturValue1, 1, 5, false);
-	temperaturBox2.setFloat(temperaturValue2, 1, 5, false);
-	temperaturBox3.setFloat(temperaturValue3, 1, 5, false);
+	temperaturBox1.setFloat(temperaturValue1, 1, 5, true);
+	temperaturBox2.setFloat(temperaturValue2, 1, 5, true);
+	temperaturBox3.setFloat(temperaturValue3, 1, 5, true);
 	if (temperaturValue1 > thresholdTemperaturTransistorMax)
 	{
 		TemperaturaTranzystoraMaxValue = true;
@@ -1128,11 +1119,11 @@ void setup()
 	}
 	else if (ImaxValue == true)
 	{
-		errorString = "Startup error: Przekroczony IDD";
+		//errorString = "Startup error: Przekroczony IDD";
 	}
 	else if (PmaxValue == true)
 	{
-		errorString = "Startup error: Przekroczony power input";
+		//errorString = "Startup error: Przekroczony power input";
 	}
 	else if (SWRLPFmaxValue == true)
 	{
@@ -1179,27 +1170,27 @@ void loop()
 	}
 	read_inputs();
 #ifdef DEBUGi
-	Serial.println("---------------------");
-	Serial.print("ptt: ");
-	Serial.println(pttValue);
-	Serial.print("stby: ");
-	Serial.println(stbyValue);
-	Serial.print("pwrForward: ");
-	Serial.println(pwrForwardValue);
-	Serial.print("pwrReturn: ");
-	Serial.println(pwrReturnValue);
-	Serial.print("drainVoltage: ");
-	Serial.println(drainVoltageValue);
-	Serial.print("aux1Voltage: ");
-	Serial.println(aux1VoltageValue);
-	Serial.print("pa1Amper: ");
-	Serial.println(pa1AmperValue);
-	Serial.print("temperatura1: ");
-	Serial.println(temperaturValue1);
-	Serial.print("input:      ");
-	Serial.println(analogRead(aiPin_temperatura2));
-	Serial.print("temperatura2: ");
-	Serial.println(temperaturValue2);
+	Serial1.println("---------------------");
+	Serial1.print("ptt: ");
+	Serial1.println(pttValue);
+	Serial1.print("stby: ");
+	Serial1.println(stbyValue);
+	Serial1.print("pwrForward: ");
+	Serial1.println(pwrForwardValue);
+	Serial1.print("pwrReturn: ");
+	Serial1.println(pwrReturnValue);
+	Serial1.print("drainVoltage: ");
+	Serial1.println(drainVoltageValue);
+	Serial1.print("aux1Voltage: ");
+	Serial1.println(aux1VoltageValue);
+	Serial1.print("pa1Amper: ");
+	Serial1.println(pa1AmperValue);
+	Serial1.print("temperatura1: ");
+	Serial1.println(temperaturValue1);
+	Serial1.print("input:      ");
+	Serial1.println(analogRead(aiPin_temperatura2));
+	Serial1.print("temperatura2: ");
+	Serial1.println(temperaturValue2);
 #endif
 
 	//-----------------------------------------------------------------------------
@@ -1273,7 +1264,7 @@ void loop()
 	// Monitor additional inputs and set errorString
 	if (ImaxValue == true)
 	{
-		errorString = "Error: Przekroczony IDD";
+		//errorString = "Error: Przekroczony IDD";
 	}
 	if (TermostatValue == true)
 	{
@@ -1281,7 +1272,7 @@ void loop()
 	}
 	if (PmaxValue == true)
 	{
-		errorString = "Error: Przekroczony power input";
+		//errorString = "Error: Przekroczony power input";
 	}
 	if (SWRmaxValue == true)
 	{
@@ -1467,7 +1458,7 @@ void loop()
 			6m 		1010
 		 */
 		AutoBandIdx = 0;
-		AutoBandIdx = digitalRead(diPin_bandData_D) << 3 | digitalRead(diPin_bandData_C) << 2 | digitalRead(diPin_bandData_B) << 1 | digitalRead(diPin_bandData_A);
+		//AutoBandIdx = digitalRead(diPin_bandData_D) << 3 | digitalRead(diPin_bandData_C) << 2 | digitalRead(diPin_bandData_B) << 1 | digitalRead(diPin_bandData_A);
 		AutoBandIdx = AutoBandIdx -1;
 		if (AutoBandIdx >= 0 and AutoBandIdx <= 9)
 		{
@@ -1583,11 +1574,13 @@ void loop()
 			}
 			*/
 			// wyłączenie tłumików
+			/*
 			digitalWrite(ATT1, HIGH);
 			digitalWrite(ATT2, HIGH);
 			digitalWrite(ATT3, HIGH);
 			// włączenie tłumika stosownie do wybranego pasma
 			digitalWrite(ATT[bandIdx], LOW);
+			*/
 			oldBandIdx = bandIdx;
 		}
 	}
@@ -1660,7 +1653,11 @@ void getTemperatura1(uint8_t pin, int Rf)
 {
 	int u = analogRead(pin);
 	float U = Vref*u/1023;
-	float therm_resistance = (-(float)Rf) * U / (-3.3f + U);
+	float therm_resistance = (-(float)Rf) * U / (-Vref+ U);
+#ifdef DEBUGt
+	Serial1.print("therm_resistance1: ");
+	Serial1.println(therm_resistance);
+#endif
 	uint_fast8_t point_left = 0;
 	uint_fast8_t point_right = SENS_TABLE_COUNT - 1;
 	for (uint_fast8_t i = 0; i < SENS_TABLE_COUNT; i++) {
@@ -1697,22 +1694,28 @@ void getTemperatura1(uint8_t pin, int Rf)
 	{ // hysteresis
 		temperaturValue1 = TRX_RF_Temperature1_averaged;
 	}
-#ifdef DEBUGi
-	Serial.print("analogRead: ");
-	Serial.println(u);
-	Serial.print("U: ");
-	Serial.println(U);
+#ifdef DEBUGt
+	Serial1.print("analogRead1: ");
+	Serial1.println(u);
+	Serial1.print("U1: ");
+	Serial1.println(U);
+	/*
 	Serial.print("R: ");
 	Serial.println(R);
-	Serial.print("T: ");
-	Serial.println(T);
+	*/
+	Serial1.print("T1: ");
+	Serial1.println(temperaturValue1);
 #endif
 }
 void getTemperatura2(uint8_t pin, int Rf)
 {
 	int u = analogRead(pin);
 	float U = Vref*u/1023;
-	float therm_resistance = (-(float)Rf) * U / (-3.3f + U);
+	float therm_resistance = (-(float)Rf) * U / (-Vref + U);
+#ifdef DEBUGt
+	Serial1.print("therm_resistance2: ");
+	Serial1.println(therm_resistance);
+#endif
 	uint_fast8_t point_left = 0;
 	uint_fast8_t point_right = SENS_TABLE_COUNT - 1;
 	for (uint_fast8_t i = 0; i < SENS_TABLE_COUNT; i++) {
@@ -1749,6 +1752,31 @@ void getTemperatura2(uint8_t pin, int Rf)
 	{ // hysteresis
 		temperaturValue2 = TRX_RF_Temperature2_averaged;
 	}
+#ifdef DEBUGt
+	Serial1.print("analogRead2: ");
+	Serial1.println(u);
+	Serial1.print("U2: ");
+	Serial1.println(U);
+	/*
+	Serial.print("R: ");
+	Serial.println(R);
+	*/
+	Serial1.print("T2: ");
+	Serial1.println(temperaturValue1);
+#endif
+}
+float getTemperatura3(uint8_t pin)
+{
+	int reading = analogRead(pin);
+	float temperature = 100 * reading * (Vref / 1023);
+	Serial1.print("reading temp3: ");
+	Serial1.println(reading);
+	// Print the temperature in the Serial Monitor:
+	Serial1.print("temp3: ");
+	Serial1.print(temperature);
+	//Serial.print(" \xC2\xB0"); // shows degree symbol
+	Serial1.println("C");
+	return temperature;
 }
 
 void read_inputs()
@@ -1766,8 +1794,8 @@ void read_inputs()
 		pa1AmperValue = 0;
 	getTemperatura1(aiPin_temperatura1, Rf1);
 	getTemperatura2(aiPin_temperatura2, Rf2);
-
-	temperaturValue3 = 0.0f;
+	temperaturValue3 = getTemperatura3(aiPin_temperatura3);
+	temperaturValue3 = 25.0f;
 
 	pttValue = not digitalRead(diPin_ptt);					// aktywny stan niski
 	stbyValue = digitalRead(diPin_stby);					// aktywny stan wysoki
