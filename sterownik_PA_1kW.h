@@ -12,7 +12,7 @@
 #define SP2HYO
 #define ALTER	// inne przyporządkowanie wejść dla kodu DCBA i wyjść dla tłumików
 //#define DEBUG
-//#define DEBUGt
+#define DEBUGt
 
 // tabela dla KTY81/110
 #define SENS_TABLE_COUNT 24
@@ -22,7 +22,7 @@ static const int16_t KTY81_120_sensTable[SENS_TABLE_COUNT][2] =
 
 void getTemperatura1(uint8_t pin, int Rf);
 void getTemperatura2(uint8_t pin, int Rf);
-float getTemperatura3(uint8_t pin);
+void getTemperatura3(uint8_t pin);
 
 void read_inputs();
 float calc_SWR(int forward, int ref);

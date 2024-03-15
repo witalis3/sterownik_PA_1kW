@@ -31,8 +31,13 @@
  	 	 - zrobione! pomiar prądu ACS713 30A
  	 	 - zrobione! pomiar temperatury tranzystorów: czujniki KTY81/110
  	 	 	 - spr wyświetlanie w/w
+ 	 	 - zrobione! pomiar temperatury radiatora LM35
 
- 	 	 - pomiar temperatury radiatora LM35
+ 	 	 - we PTT
+ 	 	 - wyjście PTT na przekaźniki i na PA (osobno)
+ 	 	 - REF i FWD (SWR)
+ 	 	 - pomiar 48V i 12V
+
  	 	 - sterowanie pracą wentylatora
  	 	 	 - na początek jeden stopień
  	 	 - obsługa PTT
@@ -138,17 +143,16 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
  * wejścia/wyjścia analogowe/cyfrowe A0-A15:
  *
  */
-
 #define BL_ONOFF_PIN     	54	// A0
 #define aiPin_pwrForward   	6	// A6
 #define aiPin_pwrReturn    	7	// A7
-#define aiPin_drainVoltage 	3
+#define aiPin_drainVoltage 	3	// 48V
 #define aiPin_aux1Voltage  	4	// 12V
-//						  		// wolne
 #define aiPin_pa1Amper     	15	// prąd drenu
 #define aiPin_temperatura1	12	//  temperatura pierwszego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
 #define aiPin_temperatura2	13	// temperatura drugiego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
 #define aiPin_temperatura3	14	// temperatura radiatora
+
 // wyjścia sterujące LPFem:
 
 /*
@@ -166,19 +170,19 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
  * D0, D1 zarezerowowane dla serial debug
  *
  */
-#define diPin_blok_Alarm_SWR	2	// wejście sygnału z ATU blokującego alarmy od SWRów na czas strojenia (stan wysoki aktywny)
+#define doPin_P12PTT	 56	// A2 P12PTT wyjście na przekaźniki N/O
 #define diPin_Termostat		3	// wejście alarmowe z termostatu
 #define doPin_SWR_ant		4	// informacja o przekroczeniu SWR (według wartości obliczonej na podstawie forwardValue i returnValue) na wyjściu antenowym
 								// aktywny stan niski
 #define doPin_blokada       5	// aktywny stan wysoki - blokada głównie od temperatury
-#define doPin_errLED      	6	// dioda wystąpienia jakiegoś błędu - aktywny stan wysoki - jak jest błąd - stan wysoki i mruga
-#define diPin_SWR_ster_max	7	// przekroczony SWR na wejściu
-#define diPin_ptt          	8	// wejście PTT
-#define diPin_SWR_LPF_max   9	// przekroczony SWR max od LPF; aktywny stan niski
+#define doPin_ResetAlarmu      	6	// reset alarmu sprzętowego na płytce zabezpieczeń
+#define diPin_AlarmOdIDD	7	// alarm od przekroczenia IDD z płytki zabezpieczeń
+#define diPin_ptt          	8		// wejście PTT
+#define diPin_BIAS   		9		// BIAS w PA pin 9
 #define diPin_stby        	10	// ustawienie PA w tryb ominięcia; aktywny stan wysoki
 #define diPin_Imax        	11	// przekroczony prąd drenu
-#define diPin_Pmax        	12	// przekroczenie mocy sterowania (na wejściu)
-#define diPin_SWRmax      	13	// przekroczenie SWR na wyjściu antenowym
+#define diPin_Pmax        12	// przekroczenie mocy sterowania (na wejściu)
+#define diPin_SWRmax   13	// przekroczenie SWR na wyjściu antenowym
 
 #ifdef ALTER
 #define doPin_ATT1			14	// sterowanie przekaźnikiem pierwszego tłumika; stan aktywny niski
@@ -896,7 +900,7 @@ DisplayBar swrBar("SWR", "", 20, 226, 80, 760, 1, 5, 3, 4, vgaBarColor, vgaBackg
 // title, unit, xPos, yPos, height, width, minValue, maxValue, warnValue1, warnValue2, colorBar, colorBack, noOffHelplines
 //DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 2500, 750, 1750, vgaBarColor, vgaBackgroundColor, 10);
 
-#ifdef SP2HYO
+#ifdef SP2HYOi
 	DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 2000, 600, 1400, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 2,0kw
 	float minValue = 0.0;
 	float maxValue = 650.0;
@@ -912,7 +916,7 @@ DisplayBar swrBar("SWR", "", 20, 226, 80, 760, 1, 5, 3, 4, vgaBarColor, vgaBackg
 //DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 1250, 375, 875, vgaBarColor, vgaBackgroundColor, 10);     // // Wybor wskaznika PWR_skali 1,25kw
 //DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 1000, 300, 700, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 1,0kw
 //DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 750, 225, 525, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 0,75kw
-//DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 650, 195, 455, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 0,65kw
+DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 650, 195, 455, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 0,65kw
 //DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 500, 150, 350, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 0,5kw
 
 #ifdef SP3JDZ
@@ -1073,9 +1077,9 @@ void setup()
 	drainVoltageBox.setFloat(drainVoltageValue, 1, 4, false);
 	aux1VoltageBox.setFloat(aux1VoltageValue, 1, 4, false);
 	pa1AmperBox.setFloat(pa1AmperValue, 1, 4, false);
-	temperaturBox1.setFloat(temperaturValue1, 1, 5, true);
-	temperaturBox2.setFloat(temperaturValue2, 1, 5, true);
-	temperaturBox3.setFloat(temperaturValue3, 1, 5, true);
+	temperaturBox1.setFloat(temperaturValue1, 1, 5, false);
+	temperaturBox2.setFloat(temperaturValue2, 1, 5, false);
+	temperaturBox3.setFloat(temperaturValue3, 1, 5, false);
 	if (temperaturValue1 > thresholdTemperaturTransistorMax)
 	{
 		TemperaturaTranzystoraMaxValue = true;
@@ -1220,9 +1224,9 @@ void loop()
 	drainVoltageBox.setFloat(drainVoltageValue, 1, 4, drawWidgetIndex == 3);
 	aux1VoltageBox.setFloat(aux1VoltageValue, 1, 4, drawWidgetIndex == 4);
 	pa1AmperBox.setFloat(pa1AmperValue, 1, 4, drawWidgetIndex == 5);
-	temperaturBox1.setFloat(temperaturValue1, 1, 5, drawWidgetIndex == 6);
-	temperaturBox2.setFloat(temperaturValue2, 1, 5, drawWidgetIndex == 7);
-	temperaturBox3.setFloat(temperaturValue3, 1, 5, drawWidgetIndex == 8);
+	temperaturBox1.setInt(temperaturValue1, 3, drawWidgetIndex == 6);
+	temperaturBox2.setInt(temperaturValue2, 3, drawWidgetIndex == 7);
+	temperaturBox3.setInt(temperaturValue3, 3, drawWidgetIndex == 8);
 	// temperatura1 i temperatura2 i wentylator1
 	if (temperaturValue1 >= thresholdTemperaturAirOn1 or temperaturValue2 >= thresholdTemperaturAirOn1)
 	{
@@ -1687,7 +1691,7 @@ void getTemperatura1(uint8_t pin, int Rf)
 		TRX_RF_Temperature_measured = 0.0f;
 	}
 
-	static float TRX_RF_Temperature1_averaged = 20.0f;
+	static float TRX_RF_Temperature1_averaged = 10.0f;
 	TRX_RF_Temperature1_averaged = TRX_RF_Temperature1_averaged * 0.995f + TRX_RF_Temperature_measured * 0.005f;
 
 	if (fabsf(TRX_RF_Temperature1_averaged - temperaturValue1) >= 1.0f)
@@ -1745,7 +1749,7 @@ void getTemperatura2(uint8_t pin, int Rf)
 		TRX_RF_Temperature_measured = 0.0f;
 	}
 
-	static float TRX_RF_Temperature2_averaged = 20.0f;
+	static float TRX_RF_Temperature2_averaged = 10.0f;
 	TRX_RF_Temperature2_averaged = TRX_RF_Temperature2_averaged * 0.995f + TRX_RF_Temperature_measured * 0.005f;
 
 	if (fabsf(TRX_RF_Temperature2_averaged - temperaturValue2) >= 1.0f)
@@ -1757,26 +1761,31 @@ void getTemperatura2(uint8_t pin, int Rf)
 	Serial1.println(u);
 	Serial1.print("U2: ");
 	Serial1.println(U);
-	/*
-	Serial.print("R: ");
-	Serial.println(R);
-	*/
 	Serial1.print("T2: ");
-	Serial1.println(temperaturValue1);
+	Serial1.println(temperaturValue2);
 #endif
 }
-float getTemperatura3(uint8_t pin)
+void getTemperatura3(uint8_t pin)
 {
 	int reading = analogRead(pin);
-	float temperature = 100 * reading * (Vref / 1023);
+	float temperaturaZmierzona = 100 * reading * (Vref / 1023);
+	static float temperatura3srednia = 10.0f;
+	temperatura3srednia = temperatura3srednia * 0.995f + temperaturaZmierzona * 0.005f;
+
+	if (fabsf(temperatura3srednia - temperaturValue3) >= 1.0f)
+	{ // hysteresis
+		temperaturValue3 = temperatura3srednia;
+	}
+
+
 	Serial1.print("reading temp3: ");
 	Serial1.println(reading);
 	// Print the temperature in the Serial Monitor:
 	Serial1.print("temp3: ");
-	Serial1.print(temperature);
+	Serial1.println(temperaturaZmierzona);
 	//Serial.print(" \xC2\xB0"); // shows degree symbol
-	Serial1.println("C");
-	return temperature;
+	//Serial1.println("C");
+
 }
 
 void read_inputs()
@@ -1794,8 +1803,7 @@ void read_inputs()
 		pa1AmperValue = 0;
 	getTemperatura1(aiPin_temperatura1, Rf1);
 	getTemperatura2(aiPin_temperatura2, Rf2);
-	temperaturValue3 = getTemperatura3(aiPin_temperatura3);
-	temperaturValue3 = 25.0f;
+	getTemperatura3(aiPin_temperatura3);
 
 	pttValue = not digitalRead(diPin_ptt);					// aktywny stan niski
 	stbyValue = digitalRead(diPin_stby);					// aktywny stan wysoki
