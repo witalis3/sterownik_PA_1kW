@@ -146,14 +146,12 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 #define BL_ONOFF_PIN     	54	// A0
 #define aiPin_pwrForward   	6	// A6
 #define aiPin_pwrReturn    	7	// A7
-#define aiPin_drainVoltage 	3	// 48V
-#define aiPin_aux1Voltage  	4	// 12V
+#define aiPin_drainVoltage 	3	// pomiar 48V
+#define aiPin_aux1Voltage  	4	// pomiar 12V
 #define aiPin_pa1Amper     	15	// prąd drenu
 #define aiPin_temperatura1	12	//  temperatura pierwszego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
 #define aiPin_temperatura2	13	// temperatura drugiego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
 #define aiPin_temperatura3	14	// temperatura radiatora
-
-// wyjścia sterujące LPFem:
 
 /*
 #define doPin_Band_A   		64	// doPin band A; 	A10
@@ -170,20 +168,32 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
  * D0, D1 zarezerowowane dla serial debug
  *
  */
+
 #define doPin_P12PTT	 56	// A2 P12PTT wyjście na przekaźniki N/O
-#define diPin_Termostat		3	// wejście alarmowe z termostatu
-#define doPin_SWR_ant		4	// informacja o przekroczeniu SWR (według wartości obliczonej na podstawie forwardValue i returnValue) na wyjściu antenowym
-								// aktywny stan niski
-#define doPin_blokada       5	// aktywny stan wysoki - blokada głównie od temperatury
+// wyjścia sterujące LPFem:
+#define doPin_40_60m	2	//
+#define doPin_80m		3	//
+#define doPin_160m		4	//
+#define doPin_20_30m	14
+#define doPin_15_17m	15
+#define doPin_10_24m	16
+
+#define doPin_blokada       5	// aktywny stan wysoki - blokada głównie od temperatury -> do sekwencera?
 #define doPin_ResetAlarmu      	6	// reset alarmu sprzętowego na płytce zabezpieczeń
 #define diPin_AlarmOdIDD	7	// alarm od przekroczenia IDD z płytki zabezpieczeń
-#define diPin_ptt          	8		// wejście PTT
-#define diPin_BIAS   		9		// BIAS w PA pin 9
+#define diPin_ptt          	8		// wejście PTT z gniazda (z TRX)
+#define doPin_BIAS   		9		// BIAS w PA pin 9
+/*
+ * na przyszłość: Fan1, Fan2, Fan3 sterowanie obrotami wentylatora
 #define diPin_stby        	10	// ustawienie PA w tryb ominięcia; aktywny stan wysoki
 #define diPin_Imax        	11	// przekroczony prąd drenu
 #define diPin_Pmax        12	// przekroczenie mocy sterowania (na wejściu)
-#define diPin_SWRmax   13	// przekroczenie SWR na wyjściu antenowym
+*/
+#define doPin_FanOn   13	// włączenie wentylatora
+#define dinAlaOdT1		21	// wejście alarmu od przekroczenia temperatury tranzystora 1
+#define dinAlaOdT2		20	// wejście alarmu od przekroczenia temperatury tranzystora 2
 
+/*
 #ifdef ALTER
 #define doPin_ATT1			14	// sterowanie przekaźnikiem pierwszego tłumika; stan aktywny niski
 #define doPin_ATT2			15	// sterowanie przekaźnikiem drugiego tłumika; stan aktywny niski
@@ -204,6 +214,7 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 #define diPin_bandData_D  	17	// band data D
 #endif
 #define diPin_MniejszaMoc	21	// ustalenie skali wskaźnika mocy (np. 2kW/500W)
+*/
 //
 // D20, D21 magistrala I2C -> nie do wykorzystania
 // digital pin 22-46 used by UTFT (resistive touch)
@@ -931,6 +942,7 @@ void setup()
 
 	pinMode(BL_ONOFF_PIN, OUTPUT);  	//backlight
 	digitalWrite(BL_ONOFF_PIN, LOW);	//off
+/*
 #ifdef SP2HYO
 	pinMode(diPin_MniejszaMoc, INPUT_PULLUP);
 	if (digitalRead(diPin_MniejszaMoc) == LOW)
@@ -941,7 +953,7 @@ void setup()
 		pwrBar.setWarnValue2(warnValue2);
 	}
 #endif
-
+*/
 	// Run the setup and init everything
 		Serial1.begin(115200);
 	if (eeprom_read_byte(0) != COLDSTART_REF)
@@ -980,34 +992,34 @@ void setup()
 	myTouch.InitTouch(LANDSCAPE);
 	myTouch.setPrecision(PREC_MEDIUM);
 
-	pinMode(diPin_blok_Alarm_SWR, INPUT_PULLUP);	// stan aktywny wysoki -> musi być coś podpięte lub rezystor do masy
-	pinMode(diPin_Termostat, INPUT_PULLUP);
-	pinMode(doPin_SWR_ant, OUTPUT);
-	digitalWrite(doPin_SWR_ant, HIGH);
+	//pinMode(diPin_blok_Alarm_SWR, INPUT_PULLUP);	// stan aktywny wysoki -> musi być coś podpięte lub rezystor do masy
+	//pinMode(diPin_Termostat, INPUT_PULLUP);
+	//pinMode(doPin_SWR_ant, OUTPUT);
+	//digitalWrite(doPin_SWR_ant, HIGH);
 	pinMode(doPin_blokada, OUTPUT);		// aktywny stan wysoki
 	digitalWrite(doPin_blokada, LOW);
-	pinMode(doPin_errLED, OUTPUT);
-	pinMode(diPin_SWR_ster_max, INPUT_PULLUP);
+	//pinMode(doPin_errLED, OUTPUT);
+	//pinMode(diPin_SWR_ster_max, INPUT_PULLUP);
 	/*
 	pinMode(doPin_Band_A, OUTPUT);
 	pinMode(doPin_Band_B, OUTPUT);
 	pinMode(doPin_Band_C, OUTPUT);
 	pinMode(doPin_Band_D, OUTPUT);
 	*/
-	pinMode(diPin_bandData_A, INPUT_PULLUP);
+	//pinMode(diPin_bandData_A, INPUT_PULLUP);
 	//pinMode(diPin_bandData_B, INPUT_PULLUP);
 	//pinMode(diPin_bandData_C, INPUT_PULLUP);
-	pinMode(diPin_bandData_D, INPUT_PULLUP);
+	//pinMode(diPin_bandData_D, INPUT_PULLUP);
 
 	pinMode(doPin_air1, OUTPUT);
 	pinMode(doPin_air2, OUTPUT);
 
 	pinMode(diPin_ptt, INPUT_PULLUP);
-	pinMode(diPin_SWR_LPF_max, INPUT_PULLUP); 	// aktywny stan niski
-	pinMode(diPin_stby, INPUT_PULLUP);
-	pinMode(diPin_Imax, INPUT_PULLUP);
-	pinMode(diPin_Pmax, INPUT_PULLUP);
-	pinMode(diPin_SWRmax, INPUT_PULLUP);
+	//pinMode(diPin_SWR_LPF_max, INPUT_PULLUP); 	// aktywny stan niski
+	//pinMode(diPin_stby, INPUT_PULLUP);
+	//pinMode(diPin_Imax, INPUT_PULLUP);
+	//pinMode(diPin_Pmax, INPUT_PULLUP);
+	//pinMode(diPin_SWRmax, INPUT_PULLUP);
 	/*
 	pinMode(doPin_ATT1, OUTPUT);
 	digitalWrite(doPin_ATT1, HIGH);	// stan aktywny niski
@@ -1588,7 +1600,7 @@ void loop()
 			oldBandIdx = bandIdx;
 		}
 	}
-
+/*
 	if ((ImaxValue or TermostatValue or PmaxValue or SWRmaxValue or SWRLPFmaxValue or SWR_ster_max or TemperaturaTranzystoraMaxValue or not genOutputEnable)  and toogle500ms)
 	{
 		digitalWrite(doPin_errLED, LOW);
@@ -1597,7 +1609,7 @@ void loop()
 	{
 		digitalWrite(doPin_errLED, HIGH);
 	}
-
+*/
 	//-----------------------------------------------------------------------------
 	// Display error messages
 	if (errorString != "")
@@ -1800,12 +1812,15 @@ void read_inputs()
 	aux1VoltageValue = analogRead(aiPin_aux1Voltage) * aux1VoltageFactor;
 	pa1AmperValue = (analogRead(aiPin_pa1Amper) - pa1AmperOffset)*pa1AmperFactor;
 	if (pa1AmperValue < 0)
+	{
 		pa1AmperValue = 0;
+	}
 	getTemperatura1(aiPin_temperatura1, Rf1);
 	getTemperatura2(aiPin_temperatura2, Rf2);
 	getTemperatura3(aiPin_temperatura3);
 
 	pttValue = not digitalRead(diPin_ptt);					// aktywny stan niski
+/*
 	stbyValue = digitalRead(diPin_stby);					// aktywny stan wysoki
 	ImaxValue = not digitalRead(diPin_Imax);				// aktywny stan niski
 	PmaxValue = not digitalRead(diPin_Pmax);				// aktywny stan niski
@@ -1814,6 +1829,7 @@ void read_inputs()
 	SWRLPFmaxValue = (not digitalRead(diPin_SWR_LPF_max)) and (not digitalRead(diPin_blok_Alarm_SWR));
 	SWR_ster_max = not digitalRead(diPin_SWR_ster_max);		// aktywny stan niski
 	TermostatValue = not digitalRead(diPin_Termostat);		// aktywny stan niski
+	*/
 }
 float calc_SWR(int forward, int ref)
 {
