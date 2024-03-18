@@ -30,11 +30,10 @@
 	- ver. 1.10.0 wersja dla SP3OCC
  	 	 - zrobione! pomiar prądu ACS713 30A
  	 	 - zrobione! pomiar temperatury tranzystorów: czujniki KTY81/110
- 	 	 	 - spr wyświetlanie w/w
  	 	 - zrobione! pomiar temperatury radiatora LM35
 
  	 	 - we PTT
- 	 	 - wyjście PTT na przekaźniki i na PA (osobno)
+ 	 	 - wyjście PTT na przekaźniki i BIAS na PA (osobno)
  	 	 - REF i FWD (SWR)
  	 	 - pomiar 48V i 12V
 
@@ -181,7 +180,7 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 #define doPin_blokada       5	// aktywny stan wysoki - blokada głównie od temperatury -> do sekwencera?
 #define doPin_ResetAlarmu      	6	// reset alarmu sprzętowego na płytce zabezpieczeń
 #define diPin_AlarmOdIDD	7	// alarm od przekroczenia IDD z płytki zabezpieczeń
-#define diPin_ptt          	8		// wejście PTT z gniazda (z TRX)
+#define diPin_We_PTT          	8		// wejście PTT z gniazda (z TRX)
 #define doPin_BIAS   		9		// BIAS w PA pin 9
 /*
  * na przyszłość: Fan1, Fan2, Fan3 sterowanie obrotami wentylatora
@@ -264,6 +263,8 @@ bool TermostatValue;
 bool errLedValue;
 
 #define inputFactorVoltage (5.0/1023.0)
+#define pwrForwardFactor (inputFactorVoltage * (222.0/5.0))
+#define pwrReturnFactor (inputFactorVoltage * (222.0/5.0))
 #ifdef SP2HYO
 #define pwrForwardFactor (inputFactorVoltage * (320.0/5.0))
 #define pwrReturnFactor (inputFactorVoltage * (320.0/5.0))
@@ -1014,7 +1015,7 @@ void setup()
 	pinMode(doPin_air1, OUTPUT);
 	pinMode(doPin_air2, OUTPUT);
 
-	pinMode(diPin_ptt, INPUT_PULLUP);
+	pinMode(diPin_We_PTT, INPUT_PULLUP);
 	//pinMode(diPin_SWR_LPF_max, INPUT_PULLUP); 	// aktywny stan niski
 	//pinMode(diPin_stby, INPUT_PULLUP);
 	//pinMode(diPin_Imax, INPUT_PULLUP);
@@ -1217,6 +1218,7 @@ void loop()
 	{
 
 		swrValue = calc_SWR(forwardValue, returnValue);
+		/*
 		bool blok_Alarm_SWR = digitalRead(diPin_blok_Alarm_SWR);
 		if (swrValue > thresholdSWR and not blok_Alarm_SWR)
 		{
@@ -1230,6 +1232,7 @@ void loop()
 		}
 		if (blok_Alarm_SWR and swrValue >= 5.0)
 			swrValue = 4.9;		// sztuczne obniżenie wartości SWR podczas strojenia ATU
+		*/
 		swrBar.setValue(swrValue, drawWidgetIndex == 2);
 	}
 
@@ -1308,6 +1311,7 @@ void loop()
 	{
 		errorString = "Error: Przekroczenie temperatury tranzystora";
 	}
+	/*
 	if (SWR3Value == true)
 	{
 		errorString = "Error: SWR anteny sterownik";
@@ -1316,7 +1320,7 @@ void loop()
 	{
 		digitalWrite(doPin_SWR_ant, HIGH);
 	}
-
+*/
 	//-----------------------------------------------------------------------------
 	// Touch events
 	if (touchX != -1 and touchY != -1)
@@ -1651,8 +1655,7 @@ void loop()
 	}
 
 #ifdef CZAS_PETLI
-	PORTE ^= (1<<PE4);		// nr portu na sztywno! =
-	// ToDo D2 -> zajęty - zmienić port
+	PORTE ^= (1<<PE1);		// nr portu na sztywno! = 1
 #else
 	// Keep the cycle time constant
 	timeAtCycleEnd = millis();
@@ -1819,7 +1822,7 @@ void read_inputs()
 	getTemperatura2(aiPin_temperatura2, Rf2);
 	getTemperatura3(aiPin_temperatura3);
 
-	pttValue = not digitalRead(diPin_ptt);					// aktywny stan niski
+	pttValue = not digitalRead(diPin_We_PTT);					// aktywny stan niski
 /*
 	stbyValue = digitalRead(diPin_stby);					// aktywny stan wysoki
 	ImaxValue = not digitalRead(diPin_Imax);				// aktywny stan niski
