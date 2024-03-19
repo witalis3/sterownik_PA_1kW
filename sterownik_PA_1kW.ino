@@ -113,9 +113,6 @@
 			 - po przekroczeniu prądu brak kodu BCD?
  */
 
-//#define CZAS_PETLI
-//#define DEBUG
-
 UTFT myGLCD(SSD1963_800480, 38, 39, 40, 41);
 
 //URTouch myTouch(6, 5, 4, 3, 2);
@@ -169,6 +166,9 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
  */
 
 #define doPin_P12PTT	 56	// A2 P12PTT wyjście na przekaźniki N/O
+#ifdef CZAS_PETLI
+#define doPin_CZAS_PETLI 1
+#endif
 // wyjścia sterujące LPFem:
 #define doPin_40_60m	2	//
 #define doPin_80m		3	//
@@ -940,9 +940,11 @@ PushButton Up(185, 20, 72, 165);
 
 void setup()
 {
-
 	pinMode(BL_ONOFF_PIN, OUTPUT);  	//backlight
 	digitalWrite(BL_ONOFF_PIN, LOW);	//off
+#ifdef CZAS_PETLI
+	pinMode(doPin_CZAS_PETLI, OUTPUT);
+#endif
 /*
 #ifdef SP2HYO
 	pinMode(diPin_MniejszaMoc, INPUT_PULLUP);
@@ -1792,7 +1794,7 @@ void getTemperatura3(uint8_t pin)
 		temperaturValue3 = temperatura3srednia;
 	}
 
-
+#ifdef DEBUGi
 	Serial1.print("reading temp3: ");
 	Serial1.println(reading);
 	// Print the temperature in the Serial Monitor:
@@ -1800,7 +1802,7 @@ void getTemperatura3(uint8_t pin)
 	Serial1.println(temperaturaZmierzona);
 	//Serial.print(" \xC2\xB0"); // shows degree symbol
 	//Serial1.println("C");
-
+#endif
 }
 
 void read_inputs()

@@ -13,6 +13,7 @@
 //#define ALTER	// inne przyporządkowanie wejść dla kodu DCBA i wyjść dla tłumików
 //#define DEBUG
 //#define DEBUGt
+#define CZAS_PETLI
 
 // tabela dla KTY81/110
 #define SENS_TABLE_COUNT 24
