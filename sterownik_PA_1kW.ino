@@ -142,8 +142,8 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 #define BL_ONOFF_PIN     	54	// A0
 #define aiPin_pwrForward   	6	// A6
 #define aiPin_pwrReturn    	7	// A7
-#define aiPin_drainVoltage 	3	// pomiar 48V
-#define aiPin_aux1Voltage  	4	// pomiar 12V
+#define aiPin_drainVoltage 	8	// pomiar 48V
+#define aiPin_aux1Voltage  	9	// pomiar 12V
 #define aiPin_pa1Amper     	15	// prąd drenu
 #define aiPin_temperatura1	12	//  temperatura pierwszego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
 #define aiPin_temperatura2	13	// temperatura drugiego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
@@ -250,7 +250,7 @@ float rev_pwr;
 bool pttValue = false;
 
 // zmienne powodujące przejście PA w tryb standby -> blokada nadawania (blokada PTT)
-bool stbyValue = true;
+bool stbyValue = false;
 bool ImaxValue;
 bool PmaxValue;
 bool SWRmaxValue;
@@ -262,7 +262,7 @@ bool TermostatValue;
 
 bool errLedValue;
 
-#define inputFactorVoltage (5.0/1023.0)
+#define inputFactorVoltage (Vref/1023.0)
 #define pwrForwardFactor (inputFactorVoltage * (222.0/5.0))
 #define pwrReturnFactor (inputFactorVoltage * (222.0/5.0))
 #ifdef SP2HYO
@@ -273,8 +273,8 @@ bool errLedValue;
 #define pwrForwardFactor (inputFactorVoltage * (222.0/5.0))
 #define pwrReturnFactor (inputFactorVoltage * (222.0/5.0))
 #endif
-#define drainVoltageFactor (inputFactorVoltage * (60.0/5.0))// 5V Input = 60V PA
-#define aux1VoltageFactor (inputFactorVoltage * (30.0/5.0)) // 5V Input = 30V PA
+#define drainVoltageFactor (inputFactorVoltage * (120.0/5.0))// 5V Input = 60V PA
+#define aux1VoltageFactor (inputFactorVoltage * (19.35/5.0)) // 5V Input = 30V PA
 #define aux2VoltageFactor (inputFactorVoltage * (15.0/5.0)) // 5V Input = 15V PA
 #ifdef ACS713
 #define pa1AmperFactor (inputFactorVoltage * (30/4.0))    // 133mV/A ACS713
@@ -884,7 +884,7 @@ InfoBox modeBox("MODE", "", 395, 60, 32, 200, 0, 0, vgaValueColor, vgaBackground
 InfoBox bandBox("LPF", "m", 20, 20, 72, 350, 0, 0, vgaValueColor, vgaBackgroundColor, GroteskBold32x64);
 
 InfoBox pa1AmperBox("PA 1", "A", 20, 340, 32, 125, 0, 62.0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
-InfoBox drainVoltageBox("DRAIN", "V", 20, 380, 32, 125, 48, 58, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
+InfoBox drainVoltageBox("DRAIN", "V", 20, 380, 32, 125, 45, 56, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
 
 InfoBox aux1VoltageBox("AUX ", "V", 170, 380, 32, 125, 11, 15, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
 //InfoBox aux1VoltageBox("AUX R", "V", 170, 340, 32, 125, 11, 15, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
@@ -999,8 +999,17 @@ void setup()
 	//pinMode(diPin_Termostat, INPUT_PULLUP);
 	//pinMode(doPin_SWR_ant, OUTPUT);
 	//digitalWrite(doPin_SWR_ant, HIGH);
+	pinMode(aiPin_aux1Voltage, INPUT);
+	pinMode(aiPin_drainVoltage, INPUT);
+
 	pinMode(doPin_blokada, OUTPUT);		// aktywny stan wysoki
 	digitalWrite(doPin_blokada, LOW);
+	// LPFs:
+	pinMode(doPin_20_30m, OUTPUT);
+	digitalWrite(doPin_20_30m, HIGH);
+
+
+
 	//pinMode(doPin_errLED, OUTPUT);
 	//pinMode(diPin_SWR_ster_max, INPUT_PULLUP);
 	/*
@@ -1018,6 +1027,8 @@ void setup()
 	pinMode(doPin_air2, OUTPUT);
 
 	pinMode(diPin_We_PTT, INPUT_PULLUP);
+	pinMode(doPin_BIAS, OUTPUT);
+	pinMode(doPin_P12PTT, OUTPUT);
 	//pinMode(diPin_SWR_LPF_max, INPUT_PULLUP); 	// aktywny stan niski
 	//pinMode(diPin_stby, INPUT_PULLUP);
 	//pinMode(diPin_Imax, INPUT_PULLUP);
@@ -1216,11 +1227,11 @@ void loop()
 	// Set display values. The widgets monitors the values and output an errorString
 	pwrBar.setValue(pwrForwardValue, drawWidgetIndex == 1);
 	//if (UpdatePowerAndVSWR())
+	/*
 	if (true)
 	{
-
 		swrValue = calc_SWR(forwardValue, returnValue);
-		/*
+
 		bool blok_Alarm_SWR = digitalRead(diPin_blok_Alarm_SWR);
 		if (swrValue > thresholdSWR and not blok_Alarm_SWR)
 		{
@@ -1234,10 +1245,10 @@ void loop()
 		}
 		if (blok_Alarm_SWR and swrValue >= 5.0)
 			swrValue = 4.9;		// sztuczne obniżenie wartości SWR podczas strojenia ATU
-		*/
+
 		swrBar.setValue(swrValue, drawWidgetIndex == 2);
 	}
-
+*/
 	drainVoltageBox.setFloat(drainVoltageValue, 1, 4, drawWidgetIndex == 3);
 	aux1VoltageBox.setFloat(aux1VoltageValue, 1, 4, drawWidgetIndex == 4);
 	pa1AmperBox.setFloat(pa1AmperValue, 1, 4, drawWidgetIndex == 5);
@@ -1449,6 +1460,10 @@ void loop()
 	{
 		if (pttValue and genOutputEnable)
 		{
+			swrValue = calc_SWR(forwardValue, returnValue);
+			swrBar.setValue(swrValue, drawWidgetIndex == 2);
+			digitalWrite(doPin_BIAS, HIGH);
+			digitalWrite(doPin_P12PTT, HIGH);
 			txRxBox.setColorValue(vgaBackgroundColor);
 			txRxBox.setColorBack(VGA_RED);
 			txRxBox.setText(" TX");
@@ -1458,6 +1473,8 @@ void loop()
 			txRxBox.setColorValue(vgaBackgroundColor);
 			txRxBox.setColorBack(VGA_GREEN);
 			txRxBox.setText("OPR");
+			digitalWrite(doPin_BIAS, LOW);
+			digitalWrite(doPin_P12PTT, LOW);
 		}
 		digitalWrite(doPin_blokada, LOW);
 	}
