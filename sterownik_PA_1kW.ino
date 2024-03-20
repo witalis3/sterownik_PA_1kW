@@ -19,26 +19,21 @@
  	 	 	 	 - WAKE otwarty
  	 - biblioteki UTouch i UTFT ze strony sprzedawcy (buydisplay)
  	 - fonty ze strony rinkydinkelectronics
- Pomiar temperatury jak w Wolfie
 
- Całkowity pobór prądu z 5V (wyświetlacz, shield, arduino mega 2560) około 400mA; pobór prądu z 12V:?
+ wersja dla SP3OCC:
+- pomiar temperatury tranzystorów jak w Wolfie, pomiar temperatury radiator a z płytki PA (LM35)
+- całkowity pobór prądu z 5V (wyświetlacz, shield, arduino mega 2560) około 400mA; pobór prądu z 12V:?
 - schemat sterownika: KICAD5 C:\KICAD\projekty\PA_500W\sterownik_PA_1kW_1_3_SP3OCC
 - schemat zabezpieczenia: KICAD6 C:\KICAD\projekty\PA_500W\zabezpieczenie nadprądowe\protection_module_SP3OCC
 - moduł PA A600 V3 Razvan (M0HZH)
+- moduł LPF SP2FP wersja 600-800W
 -----------------------------------------------------------------
  ToDo
 	- ver. 1.10.0 wersja dla SP3OCC
  	 	 - zrobione! pomiar prądu ACS713 30A
  	 	 - zrobione! pomiar temperatury tranzystorów: czujniki KTY81/110
  	 	 - zrobione! pomiar temperatury radiatora LM35
-
- 	 	 - we PTT
- 	 	 - wyjście PTT na przekaźniki i BIAS na PA (osobno)
- 	 	 - REF i FWD (SWR)
- 	 	 - pomiar 48V i 12V
-
- 	 	 - sterowanie pracą wentylatora
- 	 	 	 - na początek jeden stopień
+ 	 	 - zrobione! we PTT
  	 	 - obsługa PTT
  	 	 	 - sprawdzenie, czy TS480 daje pik przy przejściu na nadawanie (ew. sekwencer)
  	 	 	 - przejście PTT przez sterownik
@@ -46,10 +41,16 @@
  	 	 	 	 	 - komunikat
  	 	 	 	 	 - usunięcie komunikatu z panelu
  	 	 	 	 	 	 - usunięcie blokady
- 	 	 - informacje o błędach/zadziałaniu komparatorów z płytki blokady
- 	 	  - prąd
- 	 	  - temperatury
+ 	 	 - zrobione! wyjście PTT na przekaźniki i BIAS na PA (osobno)
+ 	 	 - zrobione! REF i FWD (SWR)
+ 	 	 - zrobione! pomiar 48V i 12V
 
+ 	 	 - sterowanie pracą wentylatora
+ 	 	 	 - na początek jeden stopień
+ 	 	 - alarm od przekroczenia SWR
+ 	 	 - informacje o błędach/zadziałaniu komparatorów z płytki blokady
+
+	---------------------------------------------------------------------------------------------
 	 - ver. 1.9.15 wybór trybu wyświetlania mocy na PINie: 2kW/500W (lub inne wybrane)
 	 - ver. 1.9.14 poprawienie poprawki ;-)
 	 - ver. 1.9.13 poprawienie błędu od oldBandIdx (nie przełączał LPFów)
@@ -170,12 +171,12 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 #define doPin_CZAS_PETLI 1
 #endif
 // wyjścia sterujące LPFem:
-#define doPin_40_60m	2	//
-#define doPin_80m		3	//
-#define doPin_160m		4	//
+#define doPin_40_60m	2
+#define doPin_80m			3
+#define doPin_160m		4
 #define doPin_20_30m	14
 #define doPin_15_17m	15
-#define doPin_10_24m	16
+#define doPin_10_12m	16
 
 #define doPin_blokada       5	// aktywny stan wysoki - blokada głównie od temperatury -> do sekwencera?
 #define doPin_ResetAlarmu      	6	// reset alarmu sprzętowego na płytce zabezpieczeń
@@ -332,7 +333,7 @@ enum
 #endif
 };
 byte ATT[BAND_NUM] = {ATT1, ATT1, ATT1, ATT1, ATT1, ATT2, ATT2, ATT2, ATT2, ATT3};
-String BAND[BAND_NUM] = {"    160", "    80", "    40", "    30", "    20","    17", "    15","    12", "    10", "     6"};
+String BAND[BAND_NUM] = {"    160", "    80", "    60", "    40", "    30", "    20","    17", "    15","    12", "    10"};
 byte bandIdx = 1;
 byte oldBandIdx = 0;
 byte AutoBandIdx = 15;
@@ -1543,75 +1544,93 @@ void loop()
 		if (bandIdx != oldBandIdx)
 		{
 			/*
-			 * ToDo przełączanie na LPF1-7
+			 * przełączanie LPF wg SP2FP
 			 */
-			/*
 			switch (bandIdx)
 			{
 			case 0:		// 160m
-				digitalWrite(doPin_Band_D, 0);
-				digitalWrite(doPin_Band_C, 0);
-				digitalWrite(doPin_Band_B, 0);
-				digitalWrite(doPin_Band_A, 0);
+				digitalWrite(doPin_160m, 1);
+				digitalWrite(doPin_80m, 0);
+				digitalWrite(doPin_40_60m, 0);
+				digitalWrite(doPin_20_30m, 0);
+				digitalWrite(doPin_15_17m, 0);
+				digitalWrite(doPin_10_12m, 0);
 				break;
 			case 1:		// 80m
-				digitalWrite(doPin_Band_D, 0);
-				digitalWrite(doPin_Band_C, 0);
-				digitalWrite(doPin_Band_B, 0);
-				digitalWrite(doPin_Band_A, 1);
+				digitalWrite(doPin_160m, 0);
+				digitalWrite(doPin_80m, 1);
+				digitalWrite(doPin_40_60m, 0);
+				digitalWrite(doPin_20_30m, 0);
+				digitalWrite(doPin_15_17m, 0);
+				digitalWrite(doPin_10_12m, 0);
 				break;
 			case 2:		// 40m
-				digitalWrite(doPin_Band_D, 0);
-				digitalWrite(doPin_Band_C, 0);
-				digitalWrite(doPin_Band_B, 1);
-				digitalWrite(doPin_Band_A, 0);
+				digitalWrite(doPin_160m, 0);
+				digitalWrite(doPin_80m, 0);
+				digitalWrite(doPin_40_60m, 1);
+				digitalWrite(doPin_20_30m, 0);
+				digitalWrite(doPin_15_17m, 0);
+				digitalWrite(doPin_10_12m, 0);
 				break;
-			case 3:		// 30m
-				digitalWrite(doPin_Band_D, 0);
-				digitalWrite(doPin_Band_C, 0);
-				digitalWrite(doPin_Band_B, 1);
-				digitalWrite(doPin_Band_A, 1);
+			case 3:		// 60m
+				digitalWrite(doPin_160m, 0);
+				digitalWrite(doPin_80m, 0);
+				digitalWrite(doPin_40_60m, 1);
+				digitalWrite(doPin_20_30m, 0);
+				digitalWrite(doPin_15_17m, 0);
+				digitalWrite(doPin_10_12m, 0);
 				break;
-			case 4:		// 20m
-				digitalWrite(doPin_Band_D, 0);
-				digitalWrite(doPin_Band_C, 1);
-				digitalWrite(doPin_Band_B, 0);
-				digitalWrite(doPin_Band_A, 0);
+			case 4:		// 30m
+				digitalWrite(doPin_160m, 0);
+				digitalWrite(doPin_80m, 0);
+				digitalWrite(doPin_40_60m, 0);
+				digitalWrite(doPin_20_30m, 1);
+				digitalWrite(doPin_15_17m, 0);
+				digitalWrite(doPin_10_12m, 0);
 				break;
-			case 5:		// 17m
-				digitalWrite(doPin_Band_D, 0);
-				digitalWrite(doPin_Band_C, 1);
-				digitalWrite(doPin_Band_B, 0);
-				digitalWrite(doPin_Band_A, 1);
+			case 5:		// 20m
+				digitalWrite(doPin_160m, 0);
+				digitalWrite(doPin_80m, 0);
+				digitalWrite(doPin_40_60m, 0);
+				digitalWrite(doPin_20_30m, 1);
+				digitalWrite(doPin_15_17m, 0);
+				digitalWrite(doPin_10_12m, 0);
 				break;
-			case 6:		// 15m
-				digitalWrite(doPin_Band_D, 0);
-				digitalWrite(doPin_Band_C, 1);
-				digitalWrite(doPin_Band_B, 1);
-				digitalWrite(doPin_Band_A, 0);
+			case 6:		// 17m
+				digitalWrite(doPin_160m, 0);
+				digitalWrite(doPin_80m, 0);
+				digitalWrite(doPin_40_60m, 0);
+				digitalWrite(doPin_20_30m, 0);
+				digitalWrite(doPin_15_17m, 1);
+				digitalWrite(doPin_10_12m, 0);
 				break;
-			case 7:		// 12m
-				digitalWrite(doPin_Band_D, 0);
-				digitalWrite(doPin_Band_C, 1);
-				digitalWrite(doPin_Band_B, 1);
-				digitalWrite(doPin_Band_A, 1);
+			case 7:		// 15m
+				digitalWrite(doPin_160m, 0);
+				digitalWrite(doPin_80m, 0);
+				digitalWrite(doPin_40_60m, 0);
+				digitalWrite(doPin_20_30m, 0);
+				digitalWrite(doPin_15_17m, 1);
+				digitalWrite(doPin_10_12m, 0);
 				break;
-			case 8:		// 10m
-				digitalWrite(doPin_Band_D, 1);
-				digitalWrite(doPin_Band_C, 0);
-				digitalWrite(doPin_Band_B, 0);
-				digitalWrite(doPin_Band_A, 0);
+			case 8:		// 12m
+				digitalWrite(doPin_160m, 0);
+				digitalWrite(doPin_80m, 0);
+				digitalWrite(doPin_40_60m, 0);
+				digitalWrite(doPin_20_30m, 0);
+				digitalWrite(doPin_15_17m, 0);
+				digitalWrite(doPin_10_12m, 1);
 				break;
-			case 9:		// 6m
-				digitalWrite(doPin_Band_D, 1);
-				digitalWrite(doPin_Band_C, 0);
-				digitalWrite(doPin_Band_B, 0);
-				digitalWrite(doPin_Band_A, 1);
+			case 9:		// 10m
+				digitalWrite(doPin_160m, 0);
+				digitalWrite(doPin_80m, 0);
+				digitalWrite(doPin_40_60m, 0);
+				digitalWrite(doPin_20_30m, 0);
+				digitalWrite(doPin_15_17m, 0);
+				digitalWrite(doPin_10_12m, 1);
 				break;
 			default:
 				break;
 			}
-			*/
 			// wyłączenie tłumików
 			/*
 			digitalWrite(ATT1, HIGH);
