@@ -34,6 +34,9 @@
  	 	 - zrobione! pomiar temperatury tranzystorów: czujniki KTY81/110
  	 	 - zrobione! pomiar temperatury radiatora LM35
  	 	 - zrobione! we PTT
+ 	 	 - 400W pokazuje 225W
+ 	 	 - pokazuje 54,5V; uśrednianie
+
  	 	 - obsługa PTT
  	 	 	 - sprawdzenie, czy TS480 daje pik przy przejściu na nadawanie (ew. sekwencer)
  	 	 	 - przejście PTT przez sterownik
@@ -342,7 +345,7 @@ byte AutoBandIdx = 15;
 #define thresholdPower             5.0
 #define thresholdSWR               3.5		// zmiana na 3.5 dla HYO
 #define thresholdTemperaturAirOn1   55
-#define thresholdTemperaturTransistorMax	70		// temperatura tranzystora (z termistora nr 1), przy której PA jest blokowane - STBY
+#define thresholdTemperaturTransistorMax	80		// temperatura tranzystora (z termistora nr 1), przy której PA jest blokowane - STBY
 #define thresholdTemperaturAirOn2   50
 
 String infoString = "";
@@ -929,8 +932,8 @@ DisplayBar swrBar("SWR", "", 20, 226, 80, 760, 1, 5, 3, 4, vgaBarColor, vgaBackg
 //DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 1250, 375, 875, vgaBarColor, vgaBackgroundColor, 10);     // // Wybor wskaznika PWR_skali 1,25kw
 //DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 1000, 300, 700, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 1,0kw
 //DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 750, 225, 525, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 0,75kw
-DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 650, 195, 455, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 0,65kw
-//DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 500, 150, 350, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 0,5kw
+//DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 650, 195, 455, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 0,65kw
+DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 500, 150, 350, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 0,5kw
 
 #ifdef SP3JDZ
 DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 500, 150, 350, vgaBarColor, vgaBackgroundColor, 10);
@@ -1351,6 +1354,18 @@ void loop()
 			}
 			byla_zmiana = true;
 			czas_zmiany = millis();
+		}
+		  // przejście w tryb standby i powrót
+		else if (txRxBox.isTouchInside(touchX, touchY))
+		{
+			if (stbyValue)
+			{
+				stbyValue = false;
+			}
+			else
+			{
+				stbyValue = true;
+			}
 		}
 		else if (pttValue == false and modeBox.getText() == modeManualName
 				and Up.isTouchInside(touchX, touchY))
