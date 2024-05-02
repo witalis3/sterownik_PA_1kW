@@ -52,11 +52,6 @@
 			<locationURI>ECLIPSE_HOME/arduinoPlugin/packages/arduino/hardware/avr/1.8.2/libraries/SPI</locationURI>
 		</link>
 		<link>
-			<name>libraries/SoftwareSerial</name>
-			<type>2</type>
-			<locationURI>ECLIPSE_HOME/arduinoPlugin/packages/arduino/hardware/avr/1.8.2/libraries/SoftwareSerial</locationURI>
-		</link>
-		<link>
 			<name>libraries/UTFT</name>
 			<type>2</type>
 			<location>C:/Users/witol/Documents/Arduino/libraries/UTFT</location>

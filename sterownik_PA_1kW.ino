@@ -1,7 +1,7 @@
 #include "Arduino.h"
 #include <EEPROM.h>
 #include <UTFT.h>
-#include <SoftwareSerial.h>
+//#include <SoftwareSerial.h>
 #include <UTouch.h>
 
 #include "sterownik_PA_1kW.h"
@@ -29,6 +29,10 @@
 - moduł LPF SP2FP wersja 600-800W
 -----------------------------------------------------------------
  ToDo
+ 	 - ver. 1.11.0 wersja dla 	SP3JDZ
+ 	 	 - oblutowane! IDD
+ 	 	 - oblutowane! forward
+ 	 	 -
 	- ver. 1.10.0 wersja dla SP3OCC
  	 	 - zrobione! pomiar prądu ACS713 30A
  	 	 - zrobione! pomiar temperatury tranzystorów: czujniki KTY81/110
@@ -171,7 +175,7 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 
 #define doPin_P12PTT	 56	// A2 P12PTT wyjście na przekaźniki N/O
 #ifdef CZAS_PETLI
-#define doPin_CZAS_PETLI 1
+#define doPin_CZAS_PETLI 49		// D49
 #endif
 // wyjścia sterujące LPFem:
 #define doPin_40_60m	2
@@ -359,7 +363,7 @@ int touchY = -1;
 
 unsigned long timeAtCycleStart, timeAtCycleEnd, timeStartMorseDownTime,
 		actualCycleTime, timeToogle500ms = 0;
-int drawWidgetIndex = 1;
+int drawWidgetIndex = 6;
 bool toogle500ms;
 
 #define cycleTime        30
@@ -1069,7 +1073,7 @@ void setup()
 	//myGLCD.print("DJ8QP ", RIGHT, 20);
 	//myGLCD.print("DC5ME ", RIGHT, 40);
 	myGLCD.setFont(SmallFont);
-	myGLCD.print("V1.10.0  ", RIGHT, 60);
+	myGLCD.print("V1.11.0  ", RIGHT, 60);
 
 	// Init the grafic objects
 	modeBox.init();
@@ -1288,6 +1292,7 @@ void loop()
 	}
 	// Draw index defines the infoBox that can draw new values on the utft.
 	// If all infoBoxes would draw together, the cycletime is to long and not constant for the morse output.
+	/*
 	if (drawWidgetIndex == 8)
 	{
 		drawWidgetIndex = 1;
@@ -1296,7 +1301,7 @@ void loop()
 	{
 		drawWidgetIndex++;
 	}
-
+*/
 	// Monitor additional inputs and set errorString
 	if (ImaxValue == true)
 	{
@@ -1708,7 +1713,17 @@ void loop()
 	}
 
 #ifdef CZAS_PETLI
-	PORTE ^= (1<<PE1);		// nr portu na sztywno! = 1
+	PORTL = PORTL ^ (1 << PL0);			// nr portu na sztywno! = D49; 3 noga J11 (band data)
+	/*
+	 * o dziwo: bez alarmów pętla 3ms
+	 *  teraz czas zróżnicowany: od 5ms do 30ms
+	 * bez indeksu (indeks = 0 bez odświeżania wyświetlania ) - 4,8ms -> niby minimum
+	 * indeks 1 (pwrBar): 30ms
+	 * drawWidgetIndex 2 (swrBar): 5ms! -> tylko przy nadawaniu będzie więcej!
+	 * 3 -> 30ms float
+	 * 6 -> 5ms integer
+	 */
+
 #else
 	// Keep the cycle time constant
 	timeAtCycleEnd = millis();
@@ -1765,6 +1780,7 @@ void getTemperatura1(uint8_t pin, int Rf)
 	if (fabsf(TRX_RF_Temperature1_averaged - temperaturValue1) >= 1.0f)
 	{ // hysteresis
 		temperaturValue1 = TRX_RF_Temperature1_averaged;
+		temperaturValue1 = 24.0;
 	}
 #ifdef DEBUGt
 	Serial1.print("analogRead1: ");
@@ -1823,6 +1839,7 @@ void getTemperatura2(uint8_t pin, int Rf)
 	if (fabsf(TRX_RF_Temperature2_averaged - temperaturValue2) >= 1.0f)
 	{ // hysteresis
 		temperaturValue2 = TRX_RF_Temperature2_averaged;
+		temperaturValue2 = 25.0;
 	}
 #ifdef DEBUGt
 	Serial1.print("analogRead2: ");
@@ -1843,6 +1860,7 @@ void getTemperatura3(uint8_t pin)
 	if (fabsf(temperatura3srednia - temperaturValue3) >= 1.0f)
 	{ // hysteresis
 		temperaturValue3 = temperatura3srednia;
+		temperaturValue3 = 26.0;
 	}
 
 #ifdef DEBUGi
@@ -1864,8 +1882,10 @@ void read_inputs()
 	pwrForwardValue = sq(forwardValue * pwrForwardFactor) / 50;
 	returnValue = analogRead(aiPin_pwrReturn);
 	pwrReturnValue = sq(returnValue * pwrReturnFactor) / 50;
-	drainVoltageValue = analogRead(aiPin_drainVoltage) * drainVoltageFactor;
-	aux1VoltageValue = analogRead(aiPin_aux1Voltage) * aux1VoltageFactor;
+	//drainVoltageValue = analogRead(aiPin_drainVoltage) * drainVoltageFactor;
+	drainVoltageValue = 50.0;
+	//aux1VoltageValue = analogRead(aiPin_aux1Voltage) * aux1VoltageFactor;
+	aux1VoltageValue = 12.0;
 	pa1AmperValue = (analogRead(aiPin_pa1Amper) - pa1AmperOffset)*pa1AmperFactor;
 	if (pa1AmperValue < 0)
 	{
