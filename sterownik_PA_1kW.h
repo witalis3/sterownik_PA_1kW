@@ -27,5 +27,7 @@ void getTemperatura3(uint8_t pin);
 void read_inputs();
 float calc_SWR(int forward, int ref);
 bool UpdatePowerAndVSWR();
+void startCounting (unsigned int ms);
+void switch_bands();
 
 #endif /* STEROWNIK_PA_1KW_H_ */

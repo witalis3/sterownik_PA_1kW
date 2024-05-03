@@ -19,6 +19,12 @@
  	 	 	 	 - WAKE otwarty
  	 - biblioteki UTouch i UTFT ze strony sprzedawcy (buydisplay)
  	 - fonty ze strony rinkydinkelectronics
+wersja dla SP3JDZ:
+	- miernik częstotliwości na bazie :
+	// Timer and Counter example for Mega2560
+	// Author: Nick Gammon
+	// Date: 24th April 2012
+	 * // input on pin D47 (T5) Timer5 -> kolizja z BAND0
 
  wersja dla SP3OCC:
 - pomiar temperatury tranzystorów jak w Wolfie, pomiar temperatury radiator a z płytki PA (LM35)
@@ -29,10 +35,16 @@
 - moduł LPF SP2FP wersja 600-800W
 -----------------------------------------------------------------
  ToDo
- 	 - ver. 1.11.0 wersja dla 	SP3JDZ
+ 	 - ver. 1.11.0 wersja dla SP3JDZ
  	 	 - oblutowane! IDD
  	 	 - oblutowane! forward
- 	 	 -
+ 	 	 - reszta wejść na razie zasymulowana do testów miernika częstotliwości
+ 	 	 - zrobione! przełączanie pasm przenieść ze sterownik_FT810
+ 	 	 - wpleść pomiar freq ze zmiana pasma
+ 	 	 	 - graf!
+ 	 	 - implementacja miernika f
+ 	 	 	-  input on pin D47 (T5) Timer5 -> kolizja z BAND0; złącze J11 pin 1 (masa pin 5 -> nietypowo) -> przełożyć BAND0 na inny pin
+ 	 	 	-
 	- ver. 1.10.0 wersja dla SP3OCC
  	 	 - zrobione! pomiar prądu ACS713 30A
  	 	 - zrobione! pomiar temperatury tranzystorów: czujniki KTY81/110
@@ -120,6 +132,16 @@
 				 - czy nie ma za dużych pojemności na wyj couplera -> inne dla FWD i inne dla REF (REF > FWD)
 			 - po przekroczeniu prądu brak kodu BCD?
  */
+
+// zmienne na potrzeby miernika częstotliwosci:
+// these are checked for in the main program
+volatile unsigned long timerCounts;
+volatile boolean counterReady;
+// internal to counting routine
+unsigned long overflowCount;
+unsigned int timerTicks;
+unsigned int timerPeriod;
+
 
 UTFT myGLCD(SSD1963_800480, 38, 39, 40, 41);
 
@@ -317,6 +339,7 @@ enum
 {
 	BAND_160 = 0,
 	BAND_80,
+	BAND_60,
 	BAND_40,
 	BAND_30,
 	BAND_20,
@@ -340,9 +363,22 @@ enum
 #endif
 };
 byte ATT[BAND_NUM] = {ATT1, ATT1, ATT1, ATT1, ATT1, ATT2, ATT2, ATT2, ATT2, ATT3};
-String BAND[BAND_NUM] = {"    160", "    80", "    60", "    40", "    30", "    20","    17", "    15","    12", "    10"};
-byte bandIdx = 1;
-byte oldBandIdx = 0;
+String BAND[BAND_NUM] = {"    160", "    80", "    60", "    40", "    30", "    20","    17", "    15","    12", "    10", "    6m"};
+// przełączanie pasm ze sterownik_FT810:
+enum
+{
+	LPF1_PIN = 2,
+	LPF2_PIN,
+	LPF3_PIN,
+	LPF4_PIN = 14,
+	LPF5_PIN,
+	LPF6_PIN,
+	LPF7_PIN
+};
+byte current_band = BAND_80;
+byte prev_band = BAND_NUM;
+byte Band_PIN[BAND_NUM] = {LPF3_PIN, LPF2_PIN, LPF1_PIN, LPF1_PIN, LPF4_PIN, LPF4_PIN, LPF5_PIN, LPF5_PIN, LPF6_PIN, LPF6_PIN, LPF7_PIN};
+
 byte AutoBandIdx = 15;
 
 #define thresholdCurrent           1.0
@@ -946,6 +982,42 @@ DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 500, 150, 350, vgaBarColor, v
 PushButton Down(20, 20, 72, 165);
 PushButton Up(185, 20, 72, 165);
 
+ISR (TIMER5_OVF_vect)
+{
+  ++overflowCount;               // count number of Counter1 overflows
+}  // end of TIMER5_OVF_vect
+
+
+//******************************************************************
+//  Timer2 Interrupt Service is invoked by hardware Timer 2 every 1ms = 1000 Hz
+//  16Mhz / 128 / 125 = 1000 Hz
+
+ISR (TIMER2_COMPA_vect)
+{
+  // grab counter value before it changes any more
+  unsigned int timer5CounterValue;
+  timer5CounterValue = TCNT5;  // see datasheet, (accessing 16-bit registers)
+
+  // see if we have reached timing period
+  if (++timerTicks < timerPeriod)
+    return;  // not yet
+
+  // end of gate time, measurement ready
+
+  TCCR5A = 0;    // stop timer 5
+  TCCR5B = 0;
+
+  TCCR2A = 0;    // stop timer 2
+  TCCR2B = 0;
+
+  TIMSK2 = 0;    // disable Timer2 Interrupt
+  TIMSK5 = 0;    // disable Timer5 Interrupt
+
+  // calculate total count
+  timerCounts = (overflowCount << 16) + timer5CounterValue;  // each overflow is 65536 more
+  counterReady = true;              // set global flag for end count period
+}  // end of TIMER2_COMPA_vect
+
 void setup()
 {
 	pinMode(BL_ONOFF_PIN, OUTPUT);  	//backlight
@@ -965,39 +1037,29 @@ void setup()
 	}
 #endif
 */
-	// Run the setup and init everything
-		Serial1.begin(115200);
+		Serial1.begin(115200);	// RS na złączu J1
 	if (eeprom_read_byte(0) != COLDSTART_REF)
 	{
-		EEPROM.write(1, bandIdx);
+		EEPROM.write(1, current_band);
 		EEPROM.write(2, mode);
 		EEPROM.write(0, COLDSTART_REF); // COLDSTART_REF in first byte indicates all initialized
 #ifdef DEBUG
-		Serial.println("writing initial values into memory");
+		Serial1.println("writing initial values into memory");
 #endif
 	}
-	else                       // EEPROM contains stored data, retrieve the data
+	else  // EEPROM contains stored data, retrieve the data
 	{
 		// read the current band
-		bandIdx = EEPROM.read(1);
+		current_band = EEPROM.read(1);
 		// read mode
 		mode = EEPROM.read(2);
 #ifdef DEBUGi
-		Serial1.println("reading bandIdx from memory: ");
-		Serial1.println(bandIdx);
+		Serial1.println("reading current_band from memory: ");
+		Serial1.println(current_band);
 #endif
-
 	}
-
+	switch_bands();
 	myGLCD.InitLCD();
-	// The following two lines are needed for the  display
-	// module to enable the backlight. If you are using any other
-	// display module these lines should be commented out.
-	// -------------------------------------------------------------
-	// pinMode(8, OUTPUT);  	//backlight
-	// digitalWrite(8, HIGH);	//on
-	// -------------------------------------------------------------
-	// - stan wysoki jest wymuszony rezystorem na nóżce 39 wyświetlacza - pin 8 jest zwolniony
 	myGLCD.clrScr();
 
 	myTouch.InitTouch(LANDSCAPE);
@@ -1012,11 +1074,6 @@ void setup()
 
 	pinMode(doPin_blokada, OUTPUT);		// aktywny stan wysoki
 	digitalWrite(doPin_blokada, LOW);
-	// LPFs:
-	pinMode(doPin_20_30m, OUTPUT);
-	digitalWrite(doPin_20_30m, HIGH);
-
-
 
 	//pinMode(doPin_errLED, OUTPUT);
 	//pinMode(diPin_SWR_ster_max, INPUT_PULLUP);
@@ -1052,18 +1109,10 @@ void setup()
 */
 	myGLCD.setFont(GroteskBold32x64);
 	myGLCD.setColor(vgaValueColor);
-	myGLCD.print("PA  A600", CENTER, 50);
+	myGLCD.print("Sterownik PA", CENTER, 50);
 	myGLCD.setFont(Grotesk16x32);
 	myGLCD.print("160m - 6m", CENTER, 150);
 	digitalWrite(BL_ONOFF_PIN, HIGH);	//backlight on
-	//myGLCD.print("BLF 188XR", CENTER, 200);
-
-/*  myGLCD.setFont(franklingothic_normal);
-	myGLCD.print("TNX TO", CENTER, 290);
-	myGLCD.print("DC5ME DF1AI DG2MEL DL3MBG DL6MFK", CENTER, 325);
-	myGLCD.print("DL9MBI DO1FKP DO5HT K8FOD ON7PQ", CENTER, 350);
-	myGLCD.print("DE DJ8QP", CENTER, 375);
-*/
 	delay(1000);
 	myGLCD.clrScr();
 
@@ -1096,7 +1145,7 @@ void setup()
 	pwrBar.init();
 	swrBar.init();
 	bandBox.init();
-	bandBox.setText(BAND[bandIdx]);
+	bandBox.setText(BAND[current_band]);
 	airBox1.init();
 	airBox1.setText("OFF");
 	airBox2.init();
@@ -1184,6 +1233,24 @@ void setup()
 
 void loop()
 {
+	// licznik begin
+	static bool liczy;
+	  // wait if any serial is going on
+	if ( not liczy)
+	{
+		startCounting (1);  // how many mS to count for
+		 liczy = true;
+	}
+	if (counterReady)
+	{
+		  // adjust counts by counting interval to give frequency in kHz
+		  //float frq = (timerCounts *  1.0) / timerPeriod;
+		  liczy = false;
+		 // Serial.print ("Frequency: ");
+		 // Serial.println ((unsigned long) frq);
+		 //Serial.println (timerCounts);
+	}
+	// licznik end
 	timeAtCycleStart = millis();
 	if ((timeAtCycleStart - timeToogle500ms) > 500)
 	{
@@ -1375,34 +1442,34 @@ void loop()
 		else if (pttValue == false and modeBox.getText() == modeManualName
 				and Up.isTouchInside(touchX, touchY))
 		{
-			if (bandIdx >= BAND_NUM - 1)
+			if (current_band >= BAND_NUM - 1)
 			{
-				bandIdx = 0;
+				current_band = 0;
 			}
 			else
 			{
-				bandIdx++;
+				current_band++;
 			}
 			byla_zmiana = true;
 			czas_zmiany = millis();
-			bandBox.setText(BAND[bandIdx]);
+			bandBox.setText(BAND[current_band]);
 			pwrBar.resetValueMax();
 			swrBar.resetValueMax();
 		}
 		else if (pttValue == false and modeBox.getText() == modeManualName
 				and Down.isTouchInside(touchX, touchY))
 		{
-			if (bandIdx <= 0)
+			if (current_band <= 0)
 			{
-				bandIdx = BAND_NUM - 1;
+				current_band = BAND_NUM - 1;
 			}
 			else
 			{
-				bandIdx--;
+				current_band--;
 			}
 			byla_zmiana = true;
 			czas_zmiany = millis();
-			bandBox.setText(BAND[bandIdx]);
+			bandBox.setText(BAND[current_band]);
 			pwrBar.resetValueMax();
 			swrBar.resetValueMax();
 		}
@@ -1522,13 +1589,13 @@ void loop()
 		AutoBandIdx = AutoBandIdx -1;
 		if (AutoBandIdx >= 0 and AutoBandIdx <= 9)
 		{
-			bandIdx = AutoBandIdx;
-			if (bandIdx != oldBandIdx)
+			current_band = AutoBandIdx;
+			if (current_band != prev_band)
 			{
-				bandBox.setText(BAND[bandIdx]);
+				bandBox.setText(BAND[current_band]);
 				pwrBar.resetValueMax();
 				swrBar.resetValueMax();
-				//oldBandIdx = bandIdx;	-> zapamiętanie oldBnadIdx dopiero po przełączaniu LPFa
+				//prev_band = current_band;	-> zapamiętanie oldBnadIdx dopiero po przełączaniu LPFa
 			}
 		}
 	}
@@ -1561,105 +1628,10 @@ void loop()
 	}
 	if (pttValue == false and (pa1AmperBox.getValue() < thresholdCurrent))
 	{
-		if (bandIdx != oldBandIdx)
+		if (current_band != prev_band)
 		{
-			/*
-			 * przełączanie LPF wg SP2FP
-			 */
-			switch (bandIdx)
-			{
-			case 0:		// 160m
-				digitalWrite(doPin_160m, 1);
-				digitalWrite(doPin_80m, 0);
-				digitalWrite(doPin_40_60m, 0);
-				digitalWrite(doPin_20_30m, 0);
-				digitalWrite(doPin_15_17m, 0);
-				digitalWrite(doPin_10_12m, 0);
-				break;
-			case 1:		// 80m
-				digitalWrite(doPin_160m, 0);
-				digitalWrite(doPin_80m, 1);
-				digitalWrite(doPin_40_60m, 0);
-				digitalWrite(doPin_20_30m, 0);
-				digitalWrite(doPin_15_17m, 0);
-				digitalWrite(doPin_10_12m, 0);
-				break;
-			case 2:		// 40m
-				digitalWrite(doPin_160m, 0);
-				digitalWrite(doPin_80m, 0);
-				digitalWrite(doPin_40_60m, 1);
-				digitalWrite(doPin_20_30m, 0);
-				digitalWrite(doPin_15_17m, 0);
-				digitalWrite(doPin_10_12m, 0);
-				break;
-			case 3:		// 60m
-				digitalWrite(doPin_160m, 0);
-				digitalWrite(doPin_80m, 0);
-				digitalWrite(doPin_40_60m, 1);
-				digitalWrite(doPin_20_30m, 0);
-				digitalWrite(doPin_15_17m, 0);
-				digitalWrite(doPin_10_12m, 0);
-				break;
-			case 4:		// 30m
-				digitalWrite(doPin_160m, 0);
-				digitalWrite(doPin_80m, 0);
-				digitalWrite(doPin_40_60m, 0);
-				digitalWrite(doPin_20_30m, 1);
-				digitalWrite(doPin_15_17m, 0);
-				digitalWrite(doPin_10_12m, 0);
-				break;
-			case 5:		// 20m
-				digitalWrite(doPin_160m, 0);
-				digitalWrite(doPin_80m, 0);
-				digitalWrite(doPin_40_60m, 0);
-				digitalWrite(doPin_20_30m, 1);
-				digitalWrite(doPin_15_17m, 0);
-				digitalWrite(doPin_10_12m, 0);
-				break;
-			case 6:		// 17m
-				digitalWrite(doPin_160m, 0);
-				digitalWrite(doPin_80m, 0);
-				digitalWrite(doPin_40_60m, 0);
-				digitalWrite(doPin_20_30m, 0);
-				digitalWrite(doPin_15_17m, 1);
-				digitalWrite(doPin_10_12m, 0);
-				break;
-			case 7:		// 15m
-				digitalWrite(doPin_160m, 0);
-				digitalWrite(doPin_80m, 0);
-				digitalWrite(doPin_40_60m, 0);
-				digitalWrite(doPin_20_30m, 0);
-				digitalWrite(doPin_15_17m, 1);
-				digitalWrite(doPin_10_12m, 0);
-				break;
-			case 8:		// 12m
-				digitalWrite(doPin_160m, 0);
-				digitalWrite(doPin_80m, 0);
-				digitalWrite(doPin_40_60m, 0);
-				digitalWrite(doPin_20_30m, 0);
-				digitalWrite(doPin_15_17m, 0);
-				digitalWrite(doPin_10_12m, 1);
-				break;
-			case 9:		// 10m
-				digitalWrite(doPin_160m, 0);
-				digitalWrite(doPin_80m, 0);
-				digitalWrite(doPin_40_60m, 0);
-				digitalWrite(doPin_20_30m, 0);
-				digitalWrite(doPin_15_17m, 0);
-				digitalWrite(doPin_10_12m, 1);
-				break;
-			default:
-				break;
-			}
-			// wyłączenie tłumików
-			/*
-			digitalWrite(ATT1, HIGH);
-			digitalWrite(ATT2, HIGH);
-			digitalWrite(ATT3, HIGH);
-			// włączenie tłumika stosownie do wybranego pasma
-			digitalWrite(ATT[bandIdx], LOW);
-			*/
-			oldBandIdx = bandIdx;
+			switch_bands();
+			prev_band = current_band;
 		}
 	}
 /*
@@ -1693,7 +1665,7 @@ void loop()
 
 	if (byla_zmiana && (millis() - czas_zmiany > CZAS_REAKCJI))
 	{
-	    EEPROM.write(1, bandIdx);           // writing current band into eeprom
+	    EEPROM.write(1, current_band);           // writing current band into eeprom
 	    if (modeBox.getText() == modeManualName)
 	    {
 		    EEPROM.write(2, MANUAL);
@@ -1705,8 +1677,8 @@ void loop()
 		byla_zmiana = false;
 #ifdef DEBUG
 		Serial.println("writing current settings to EEPROM: ");
-		Serial.print("bandIdx: ");
-		Serial.println(bandIdx);
+		Serial.print("current_band: ");
+		Serial.println(current_band);
 		Serial.print("mode: ");
 		Serial.println(modeBox.getText());
 #endif
@@ -2001,3 +1973,69 @@ bool UpdatePowerAndVSWR()
 	}
 	return retval;
 }
+void startCounting (unsigned int ms)
+  {
+	  counterReady = false;         // time not up yet
+	  timerPeriod = ms;             // how many 1 mS counts to do
+	  timerTicks = 0;               // reset interrupt counter
+	  overflowCount = 0;            // no overflows yet
+
+	  // reset Timer 2 and Timer 5
+	  TCCR2A = 0;
+	  TCCR2B = 0;
+	  TCCR5A = 0;
+	  TCCR5B = 0;
+
+	  // Timer 5 - counts events on pin D47
+	  TIMSK5 = _BV (TOIE1);   // interrupt on Timer 5 overflow
+
+	  // Timer 2 - gives us our 1 mS counting interval
+	  // 16 MHz clock (62.5 nS per tick) - prescaled by 128
+	  //  counter increments every 8 uS.
+	  // So we count 125 of them, giving exactly 1000 uS (1 mS)
+	  TCCR2A = _BV (WGM21) ;   // CTC mode
+	  OCR2A  = 124;            // count up to 125  (zero relative!!!!)
+
+	  // Timer 2 - interrupt on match (ie. every 1 mS)
+	  TIMSK2 = _BV (OCIE2A);   // enable Timer2 Interrupt
+
+	  TCNT2 = 0;
+	  TCNT5 = 0;      // Both counters to zero
+
+	  // Reset prescalers
+	  GTCCR = _BV (PSRASY);        // reset prescaler now
+	  // start Timer 2
+	  TCCR2B =  _BV (CS20) | _BV (CS22) ;  // prescaler of 128
+	  // start Timer 5
+	  // External clock source on T4 pin (D47). Clock on rising edge.
+	  TCCR5B =  _BV (CS50) | _BV (CS51) | _BV (CS52);
+}  // end of startCounting
+void switch_bands()
+{
+#ifdef DEBUG
+	Serial1.print("prev_band: ");
+	Serial1.println(Band_PIN[prev_band]);
+	Serial1.print("current_band: ");
+	Serial1.println(Band_PIN[current_band]);
+#endif
+	if (Band_PIN[current_band] != Band_PIN[prev_band])
+	{
+#ifdef SP2FP
+		digitalWrite(Band_PIN[prev_band], LOW);
+		mcp.digitalWrite(BPF_PIN[prev_band], LOW);
+		digitalWrite(Band_PIN[current_band], HIGH);
+		mcp.digitalWrite(BPF_PIN[current_band], HIGH);
+#else
+		if (prev_band != BAND_160)	// tylko dla LPFów wg DJ0ABR 160m przy wyłączonych wszystkich przekaźnikach
+		{
+			digitalWrite(Band_PIN[prev_band], LOW);
+		}
+		if (current_band != BAND_160)
+		{
+			digitalWrite(Band_PIN[current_band], HIGH);
+		}
+#endif
+	}
+	prev_band = current_band;
+}
+
