@@ -24,7 +24,7 @@ wersja dla SP3JDZ:
 	// Timer and Counter example for Mega2560
 	// Author: Nick Gammon
 	// Date: 24th April 2012
-	 * // input on pin D47 (T5) Timer5 -> kolizja z BAND0
+	 * // input on pin D47 (T5) Timer5 -> kolizja z BAND0 -> WE_FREQ
 
  wersja dla SP3OCC:
 - pomiar temperatury tranzystorów jak w Wolfie, pomiar temperatury radiator a z płytki PA (LM35)
@@ -43,7 +43,7 @@ wersja dla SP3JDZ:
  	 	 - wpleść pomiar freq ze zmiana pasma
  	 	 	 - graf!
  	 	 - implementacja miernika f
- 	 	 	-  input on pin D47 (T5) Timer5 -> kolizja z BAND0; złącze J11 pin 1 (masa pin 5 -> nietypowo) -> przełożyć BAND0 na inny pin
+ 	 	 	-  input on pin D47 (T5) Timer5 PL2 noga 37 -> kolizja z BAND0; złącze J11 pin 1 (masa pin 5 -> nietypowo) -> przełożyć BAND0 na inny pin
  	 	 	-
 	- ver. 1.10.0 wersja dla SP3OCC
  	 	 - zrobione! pomiar prądu ACS713 30A
@@ -179,19 +179,12 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 #define aiPin_temperatura2	13	// temperatura drugiego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
 #define aiPin_temperatura3	14	// temperatura radiatora
 
-/*
-#define doPin_Band_A   		64	// doPin band A; 	A10
-#define doPin_Band_B   		65	// doPin band B; 	A11
-#define doPin_Band_C   		66	// doPin band C; 	A12
-#define doPin_Band_D   		67	// doPin band D; 	A13
-*/
-
 #define doPin_air1          13 	// wentylator = A14
 #define doPin_air2         	59	// wentylator2 = A5
 
 /*
  * wejścia/wyjścia cyfrowe:
- * D0, D1 zarezerowowane dla serial debug
+ * D0, D1 zarezerowowane dla ew. serial debug na USB
  *
  */
 
@@ -222,28 +215,11 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 #define dinAlaOdT1		21	// wejście alarmu od przekroczenia temperatury tranzystora 1
 #define dinAlaOdT2		20	// wejście alarmu od przekroczenia temperatury tranzystora 2
 
-/*
-#ifdef ALTER
-#define doPin_ATT1			14	// sterowanie przekaźnikiem pierwszego tłumika; stan aktywny niski
-#define doPin_ATT2			15	// sterowanie przekaźnikiem drugiego tłumika; stan aktywny niski
-#define doPin_ATT3			16	// sterowanie przekaźnikiem trzeciego tłumika; stan aktywny niski
+#define BAND_A_PIN  	58	// band data A
+#define BAND_B_PIN  	48	// band data B
+#define BAND_C_PIN  	49	// band data C
+#define BAND_D_PIN  	55	// band data D
 
-#define diPin_bandData_A  	17	// band data A
-#define diPin_bandData_B  	18	// band data B
-#define diPin_bandData_C  	19	// band data C
-#define diPin_bandData_D  	20	// band data D
-#else
-#define doPin_ATT1			18	// sterowanie przekaźnikiem pierwszego tłumika; stan aktywny niski
-#define doPin_ATT2			19	// sterowanie przekaźnikiem drugiego tłumika; stan aktywny niski
-#define doPin_ATT3			20	// sterowanie przekaźnikiem trzeciego tłumika; stan aktywny niski
-
-#define diPin_bandData_A  	14	// band data A
-#define diPin_bandData_B  	15	// band data B
-#define diPin_bandData_C  	16	// band data C
-#define diPin_bandData_D  	17	// band data D
-#endif
-#define diPin_MniejszaMoc	21	// ustalenie skali wskaźnika mocy (np. 2kW/500W)
-*/
 //
 // D20, D21 magistrala I2C -> nie do wykorzystania
 // digital pin 22-46 used by UTFT (resistive touch)
@@ -1016,28 +992,16 @@ ISR (TIMER2_COMPA_vect)
   // calculate total count
   timerCounts = (overflowCount << 16) + timer5CounterValue;  // each overflow is 65536 more
   counterReady = true;              // set global flag for end count period
+#ifdef CZAS_PETLI
+  //PORTL = PORTL ^ (1 << PL1);			// nr portu na sztywno! = D48; 2 noga J11 (band data); chyba nie działa
+#endif
 }  // end of TIMER2_COMPA_vect
 
 void setup()
 {
 	pinMode(BL_ONOFF_PIN, OUTPUT);  	//backlight
 	digitalWrite(BL_ONOFF_PIN, LOW);	//off
-#ifdef CZAS_PETLI
-	pinMode(doPin_CZAS_PETLI, OUTPUT);
-#endif
-/*
-#ifdef SP2HYO
-	pinMode(diPin_MniejszaMoc, INPUT_PULLUP);
-	if (digitalRead(diPin_MniejszaMoc) == LOW)
-	{
-		pwrBar.setMinValue(minValue);
-		pwrBar.setMaxValue(maxValue);
-		pwrBar.setWarnValue1(warnValue1);
-		pwrBar.setWarnValue2(warnValue2);
-	}
-#endif
-*/
-		Serial1.begin(115200);	// RS na złączu J1
+	Serial1.begin(115200);	// RS na złączu J1
 	if (eeprom_read_byte(0) != COLDSTART_REF)
 	{
 		EEPROM.write(1, current_band);
@@ -1077,16 +1041,16 @@ void setup()
 
 	//pinMode(doPin_errLED, OUTPUT);
 	//pinMode(diPin_SWR_ster_max, INPUT_PULLUP);
-	/*
-	pinMode(doPin_Band_A, OUTPUT);
-	pinMode(doPin_Band_B, OUTPUT);
-	pinMode(doPin_Band_C, OUTPUT);
-	pinMode(doPin_Band_D, OUTPUT);
-	*/
-	//pinMode(diPin_bandData_A, INPUT_PULLUP);
-	//pinMode(diPin_bandData_B, INPUT_PULLUP);
-	//pinMode(diPin_bandData_C, INPUT_PULLUP);
-	//pinMode(diPin_bandData_D, INPUT_PULLUP);
+
+	pinMode(BAND_A_PIN, INPUT_PULLUP);
+	pinMode(BAND_B_PIN, INPUT_PULLUP);
+	pinMode(BAND_C_PIN, INPUT_PULLUP);
+	pinMode(BAND_D_PIN, INPUT_PULLUP);
+#ifdef CZAS_PETLI
+	pinMode(doPin_CZAS_PETLI, OUTPUT);
+	pinMode(48, OUTPUT);
+#else
+#endif
 
 	pinMode(doPin_air1, OUTPUT);
 	pinMode(doPin_air2, OUTPUT);
@@ -1245,7 +1209,7 @@ void loop()
 	{
 		  // adjust counts by counting interval to give frequency in kHz
 		  //float frq = (timerCounts *  1.0) / timerPeriod;
-		  liczy = false;
+		 // liczy = false;
 		 // Serial.print ("Frequency: ");
 		 // Serial.println ((unsigned long) frq);
 		 //Serial.println (timerCounts);
@@ -1585,7 +1549,7 @@ void loop()
 			6m 		1010
 		 */
 		AutoBandIdx = 0;
-		//AutoBandIdx = digitalRead(diPin_bandData_D) << 3 | digitalRead(diPin_bandData_C) << 2 | digitalRead(diPin_bandData_B) << 1 | digitalRead(diPin_bandData_A);
+		//AutoBandIdx = digitalRead(BAND_D_PIN) << 3 | digitalRead(BAND_C_PIN) << 2 | digitalRead(BAND_B_PIN) << 1 | digitalRead(BAND_A_PIN);
 		AutoBandIdx = AutoBandIdx -1;
 		if (AutoBandIdx >= 0 and AutoBandIdx <= 9)
 		{
@@ -1598,6 +1562,12 @@ void loop()
 				//prev_band = current_band;	-> zapamiętanie oldBnadIdx dopiero po przełączaniu LPFa
 			}
 		}
+		// pasmo z pomiaru częstotliwości
+		if (counterReady)
+		{
+
+		}
+
 	}
 
 	//-----------------------------------------------------------------------------
