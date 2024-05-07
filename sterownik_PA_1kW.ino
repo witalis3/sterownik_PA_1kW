@@ -1,10 +1,8 @@
 #include "Arduino.h"
 #include <EEPROM.h>
 #include <UTFT.h>
-//#include <SoftwareSerial.h>
 #include <UTouch.h>
 
-#include "sterownik_PA_1kW.h"
 
 /*
  Na bazie sterownika DC5ME:
@@ -133,14 +131,32 @@ wersja dla SP3JDZ:
 			 - po przekroczeniu prądu brak kodu BCD?
  */
 
-// zmienne na potrzeby miernika częstotliwosci:
+#include "sterownik_PA_1kW.h"
+
+// zmienne na potrzeby miernika częstotliwości:
 // these are checked for in the main program
+const byte band_prescaler = 8;
 volatile unsigned long timerCounts;
 volatile boolean counterReady;
+band_data bands[] =
+{
+		{1810000/band_prescaler, 2000000/band_prescaler},
+		{3500000/band_prescaler, 3800000/band_prescaler},
+		{5351000/band_prescaler, 5363000/band_prescaler},
+		{7000000/band_prescaler, 7200000/band_prescaler},
+		{10100000/band_prescaler, 10150000/band_prescaler},
+		{14000000/band_prescaler, 14350000/band_prescaler},
+		{18068000/band_prescaler, 18150000/band_prescaler},
+		{21000000/band_prescaler, 21450000/band_prescaler},
+		{24890000/band_prescaler, 24960000/band_prescaler},
+		{28000000/band_prescaler, 29700000/band_prescaler}
+};
+
 // internal to counting routine
 unsigned long overflowCount;
 unsigned int timerTicks;
 unsigned int timerPeriod;
+
 
 
 UTFT myGLCD(SSD1963_800480, 38, 39, 40, 41);
@@ -190,7 +206,8 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 
 #define doPin_P12PTT	 56	// A2 P12PTT wyjście na przekaźniki N/O
 #ifdef CZAS_PETLI
-#define doPin_CZAS_PETLI 49		// D49
+#define doPin_CZAS_PETLI 21		// D21/noga 75 Arduino Mega
+#define doPin_CZAS_PETLI2 20		// D20/noga 74 Arduino Mega
 #endif
 // wyjścia sterujące LPFem:
 #define doPin_40_60m	2
@@ -212,8 +229,8 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 #define diPin_Pmax        12	// przekroczenie mocy sterowania (na wejściu)
 */
 #define doPin_FanOn   13	// włączenie wentylatora
-#define dinAlaOdT1		21	// wejście alarmu od przekroczenia temperatury tranzystora 1
-#define dinAlaOdT2		20	// wejście alarmu od przekroczenia temperatury tranzystora 2
+//#define dinAlaOdT1		21	// wejście alarmu od przekroczenia temperatury tranzystora 1
+//#define dinAlaOdT2		20	// wejście alarmu od przekroczenia temperatury tranzystora 2
 
 #define BAND_A_PIN  	58	// band data A
 #define BAND_B_PIN  	48	// band data B
@@ -1048,8 +1065,7 @@ void setup()
 	pinMode(BAND_D_PIN, INPUT_PULLUP);
 #ifdef CZAS_PETLI
 	pinMode(doPin_CZAS_PETLI, OUTPUT);
-	pinMode(48, OUTPUT);
-#else
+	pinMode(doPin_CZAS_PETLI2, OUTPUT);
 #endif
 
 	pinMode(doPin_air1, OUTPUT);
@@ -1565,9 +1581,16 @@ void loop()
 		// pasmo z pomiaru częstotliwości
 		if (counterReady)
 		{
-
+			unsigned long int frq = timerCounts;
+			for (int var = 0; var < BAND_NUM; ++var)
+			{
+				if (frq >= bands->lowLimit and frq <= bands->topLimit)
+				{
+					current_band = var;
+					break;
+				}
+			}
 		}
-
 	}
 
 	//-----------------------------------------------------------------------------
