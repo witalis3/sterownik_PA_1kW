@@ -39,7 +39,8 @@ wersja dla SP3JDZ:
  	 	 - reszta wejść na razie zasymulowana do testów miernika częstotliwości
  	 	 - zrobione! przełączanie pasm przenieść ze sterownik_FT810
  	 	 - wpleść pomiar freq ze zmiana pasma
- 	 	 	 - graf!
+ 	 	 	 - źle liczy! coś z przerwaniami nie tak
+ 	 	 	 	 - po zmianie timer2 na timer3 dalej jest źle; bruździ biblioteka UTFT (już po myGLCD.InitLCD();)
  	 	 - implementacja miernika f
  	 	 	-  input on pin D47 (T5) Timer5 PL2 noga 37 -> kolizja z BAND0; złącze J11 pin 1 (masa pin 5 -> nietypowo) -> przełożyć BAND0 na inny pin
  	 	 	-
@@ -135,7 +136,7 @@ wersja dla SP3JDZ:
 
 // zmienne na potrzeby miernika częstotliwości:
 // these are checked for in the main program
-const byte band_prescaler = 8;
+const byte band_prescaler = 1;
 volatile unsigned long timerCounts;
 volatile boolean counterReady;
 band_data bands[] =
@@ -982,10 +983,10 @@ ISR (TIMER5_OVF_vect)
 
 
 //******************************************************************
-//  Timer2 Interrupt Service is invoked by hardware Timer 2 every 1ms = 1000 Hz
-//  16Mhz / 128 / 125 = 1000 Hz
+//  Timer3 Interrupt Service is invoked by hardware Timer 3 every 1ms = 1000 Hz
+//  16Mhz / 64 / 250 = 1000 Hz
 
-ISR (TIMER2_COMPA_vect)
+ISR (TIMER3_COMPA_vect)
 {
   // grab counter value before it changes any more
   unsigned int timer5CounterValue;
@@ -1000,19 +1001,19 @@ ISR (TIMER2_COMPA_vect)
   TCCR5A = 0;    // stop timer 5
   TCCR5B = 0;
 
-  TCCR2A = 0;    // stop timer 2
-  TCCR2B = 0;
+  TCCR3A = 0;    // stop timer 3
+  TCCR3B = 0;
 
-  TIMSK2 = 0;    // disable Timer2 Interrupt
+  TIMSK3 = 0;    // disable Timer3 Interrupt
   TIMSK5 = 0;    // disable Timer5 Interrupt
 
   // calculate total count
   timerCounts = (overflowCount << 16) + timer5CounterValue;  // each overflow is 65536 more
   counterReady = true;              // set global flag for end count period
 #ifdef CZAS_PETLI
-  //PORTL = PORTL ^ (1 << PL1);			// nr portu na sztywno! = D48; 2 noga J11 (band data); chyba nie działa
+  //PORTD = PORTD ^ (1 << PD1);			// nr portu na sztywno! = D20; 3 noga J14 (I2C->SDA); chyba nie działa; to nie miejsce na takie szykany
 #endif
-}  // end of TIMER2_COMPA_vect
+}  // end of TIMER3_COMPA_vect
 
 void setup()
 {
@@ -1582,6 +1583,7 @@ void loop()
 		if (counterReady)
 		{
 			unsigned long int frq = timerCounts;
+
 			for (int var = 0; var < BAND_NUM; ++var)
 			{
 				if (frq >= bands->lowLimit and frq <= bands->topLimit)
@@ -1590,6 +1592,9 @@ void loop()
 					break;
 				}
 			}
+			Serial1.println(timerCounts);
+			liczy = false;
+			delay(200);
 		}
 	}
 
@@ -1678,7 +1683,7 @@ void loop()
 	}
 
 #ifdef CZAS_PETLI
-	PORTL = PORTL ^ (1 << PL0);			// nr portu na sztywno! = D49; 3 noga J11 (band data)
+	PORTD = PORTD ^ (1 << PD0);			// nr portu na sztywno! = D21 PD0; J14 -> 2 noga (I2C-> SCL)
 	/*
 	 * o dziwo: bez alarmów pętla 3ms
 	 *  teraz czas zróżnicowany: od 5ms do 30ms
@@ -1856,6 +1861,9 @@ void read_inputs()
 	{
 		pa1AmperValue = 0;
 	}
+	// ToDo do usunięcia
+	pa1AmperValue = 0;
+
 	getTemperatura1(aiPin_temperatura1, Rf1);
 	getTemperatura2(aiPin_temperatura2, Rf2);
 	getTemperatura3(aiPin_temperatura3);
@@ -1973,32 +1981,34 @@ void startCounting (unsigned int ms)
 	  timerTicks = 0;               // reset interrupt counter
 	  overflowCount = 0;            // no overflows yet
 
-	  // reset Timer 2 and Timer 5
-	  TCCR2A = 0;
-	  TCCR2B = 0;
+	  // reset Timer 3 and Timer 5
+	  TCCR3A = 0;
+	  TCCR3B = 0;
+	 // TCCR3C = 0;
+
 	  TCCR5A = 0;
 	  TCCR5B = 0;
 
 	  // Timer 5 - counts events on pin D47
 	  TIMSK5 = _BV (TOIE1);   // interrupt on Timer 5 overflow
 
-	  // Timer 2 - gives us our 1 mS counting interval
+	  // Timer 3 - gives us our 1 mS counting interval
 	  // 16 MHz clock (62.5 nS per tick) - prescaled by 128
 	  //  counter increments every 8 uS.
-	  // So we count 125 of them, giving exactly 1000 uS (1 mS)
-	  TCCR2A = _BV (WGM21) ;   // CTC mode
-	  OCR2A  = 124;            // count up to 125  (zero relative!!!!)
+	  // So we count 250 of them, giving exactly 1000 uS (1 mS)
+	  TCCR3A = _BV (WGM32) ;   // CTC mode
+	  OCR3A  = 249;            // count up to 125  (zero relative!!!!)
 
-	  // Timer 2 - interrupt on match (ie. every 1 mS)
-	  TIMSK2 = _BV (OCIE2A);   // enable Timer2 Interrupt
+	  // Timer 3 - interrupt on match (ie. every 1 mS)
+	  TIMSK3 = _BV (OCIE3A);   // enable Timer3 Interrupt
 
-	  TCNT2 = 0;
+	  TCNT3 = 0;
 	  TCNT5 = 0;      // Both counters to zero
 
 	  // Reset prescalers
 	  GTCCR = _BV (PSRASY);        // reset prescaler now
-	  // start Timer 2
-	  TCCR2B =  _BV (CS20) | _BV (CS22) ;  // prescaler of 128
+	  // start Timer 3
+	  TCCR3B =  _BV (CS30) | _BV (CS31) ;  // prescaler of 64
 	  // start Timer 5
 	  // External clock source on T4 pin (D47). Clock on rising edge.
 	  TCCR5B =  _BV (CS50) | _BV (CS51) | _BV (CS52);
