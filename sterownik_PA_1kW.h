@@ -12,6 +12,7 @@
 //#define DEBUG
 //#define DEBUGt
 #define CZAS_PETLI
+//#define POMIAR		// pomiar częstotliwości
 
 // tabela dla KTY81/110
 #define SENS_TABLE_COUNT 24

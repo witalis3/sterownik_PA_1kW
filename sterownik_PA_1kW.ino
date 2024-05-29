@@ -1217,9 +1217,10 @@ void loop()
 	// licznik begin
 	static bool liczy;
 	  // wait if any serial is going on
+
 	if ( not liczy)
 	{
-		startCounting (1);  // how many mS to count for
+		//startCounting (1);  // how many mS to count for
 		 liczy = true;
 	}
 	if (counterReady)
@@ -1580,6 +1581,7 @@ void loop()
 			}
 		}
 		// pasmo z pomiaru częstotliwości
+#ifdef POMIAR
 		if (counterReady)
 		{
 			unsigned long int frq = timerCounts;
@@ -1596,6 +1598,7 @@ void loop()
 			liczy = false;
 			delay(200);
 		}
+#endif
 	}
 
 	//-----------------------------------------------------------------------------
@@ -1884,7 +1887,7 @@ float calc_SWR(int forward, int ref)
 {
 #define MAX_SWR	9.9
 	float swr;
-	if (forward > 0)
+	if (forward > 5)		// min 5W
 	{
 		if (forward <= ref)
 		{
