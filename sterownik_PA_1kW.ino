@@ -156,7 +156,7 @@ band_data bands[] =
 // internal to counting routine
 unsigned long overflowCount;
 unsigned int timerTicks;
-unsigned int timerPeriod;
+unsigned int timerPeriod = 1;
 
 
 
@@ -207,8 +207,8 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 
 #define doPin_P12PTT	 56	// A2 P12PTT wyjście na przekaźniki N/O
 #ifdef CZAS_PETLI
-#define doPin_CZAS_PETLI 21		// D21/noga 75 Arduino Mega
-#define doPin_CZAS_PETLI2 20		// D20/noga 74 Arduino Mega
+#define doPin_CZAS_PETLI 21		// D21/noga 75 Arduino Mega SCL
+#define doPin_CZAS_PETLI2 20		// D20/noga 74 Arduino Mega SDA
 #endif
 // wyjścia sterujące LPFem:
 #define doPin_40_60m	2
@@ -989,7 +989,7 @@ ISR (TIMER5_OVF_vect)
 ISR (TIMER3_COMPA_vect)
 {
   // grab counter value before it changes any more
-  unsigned int timer5CounterValue;
+    unsigned int timer5CounterValue;
   timer5CounterValue = TCNT5;  // see datasheet, (accessing 16-bit registers)
 
   // see if we have reached timing period
@@ -1216,18 +1216,17 @@ void loop()
 {
 	// licznik begin
 	static bool liczy;
-	  // wait if any serial is going on
 
 	if ( not liczy)
 	{
-		//startCounting (1);  // how many mS to count for
+		startCounting (1);  // how many mS to count for
 		 liczy = true;
 	}
 	if (counterReady)
 	{
 		  // adjust counts by counting interval to give frequency in kHz
 		  //float frq = (timerCounts *  1.0) / timerPeriod;
-		 // liczy = false;
+		// liczy = false;
 		 // Serial.print ("Frequency: ");
 		 // Serial.println ((unsigned long) frq);
 		 //Serial.println (timerCounts);
@@ -1341,7 +1340,7 @@ void loop()
 	}
 	// Draw index defines the infoBox that can draw new values on the utft.
 	// If all infoBoxes would draw together, the cycletime is to long and not constant for the morse output.
-	/*
+
 	if (drawWidgetIndex == 8)
 	{
 		drawWidgetIndex = 1;
@@ -1350,7 +1349,7 @@ void loop()
 	{
 		drawWidgetIndex++;
 	}
-*/
+
 	// Monitor additional inputs and set errorString
 	if (ImaxValue == true)
 	{
@@ -1501,6 +1500,9 @@ void loop()
 
 	//-----------------------------------------------------------------------------
 	// Reset genOutputEnable on any errorString
+	// ToDo do usunięcia
+	errorString = "";
+
 	if (errorString != "")
 	{
 		genOutputEnable = false;
@@ -1537,14 +1539,16 @@ void loop()
 			txRxBox.setColorValue(vgaBackgroundColor);
 			txRxBox.setColorBack(VGA_RED);
 			txRxBox.setText(" TX");
+			airBox1.setText("ON");
 		}
 		else
 		{
+			digitalWrite(doPin_BIAS, LOW);
+			digitalWrite(doPin_P12PTT, LOW);
 			txRxBox.setColorValue(vgaBackgroundColor);
 			txRxBox.setColorBack(VGA_GREEN);
 			txRxBox.setText("OPR");
-			digitalWrite(doPin_BIAS, LOW);
-			digitalWrite(doPin_P12PTT, LOW);
+			airBox1.setText("OFF");
 		}
 		digitalWrite(doPin_blokada, LOW);
 	}
