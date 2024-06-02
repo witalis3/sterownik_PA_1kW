@@ -2,7 +2,7 @@
 #include <EEPROM.h>
 #include <UTFT.h>
 #include <UTouch.h>
-
+#include "PinChangeInterrupt.h"
 
 /*
  Na bazie sterownika DC5ME:
@@ -34,15 +34,24 @@ wersja dla SP3JDZ:
 -----------------------------------------------------------------
  ToDo
  	 - ver. 1.11.0 wersja dla SP3JDZ
+ 	 	 - rozważyć użycie
+ 	 	 	 - biblioteki dla PCINT PinChangeInterrupt do obsługi PTT na PCINT
+ 	 	 	 - lub przerwaniue od zewnątrz -> tylko wybrane piny!
+ 	 	 	 - timerOne dla kontroli czasów
+ 	 	 - PTT na przerwaniach
+ 	 	 	 -
  	 	 - oblutowane! IDD
  	 	 - oblutowane! forward
  	 	 - reszta wejść na razie zasymulowana do testów miernika częstotliwości
+ 	 	 	 - testy przerwane
  	 	 - zrobione! przełączanie pasm przenieść ze sterownik_FT810
  	 	 - wpleść pomiar freq ze zmiana pasma
  	 	 	 - źle liczy! coś z przerwaniami nie tak
  	 	 	 	 - po zmianie timer2 na timer3 dalej jest źle; bruździ biblioteka UTFT (już po myGLCD.InitLCD();)
+ 	 	 	 	 - przerwane
  	 	 - implementacja miernika f
  	 	 	-  input on pin D47 (T5) Timer5 PL2 noga 37 -> kolizja z BAND0; złącze J11 pin 1 (masa pin 5 -> nietypowo) -> przełożyć BAND0 na inny pin
+ 	 	 		- BAND0 przeniesione
  	 	 	-
 	- ver. 1.10.0 wersja dla SP3OCC
  	 	 - zrobione! pomiar prądu ACS713 30A
@@ -187,7 +196,7 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
  *
  */
 #define BL_ONOFF_PIN     	54	// A0
-#define aiPin_pwrForward   	6	// A6
+#define aiPin_pwrForward   	6	// 0
 #define aiPin_pwrReturn    	7	// A7
 #define aiPin_drainVoltage 	8	// pomiar 48V
 #define aiPin_aux1Voltage  	9	// pomiar 12V
@@ -221,7 +230,8 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 #define doPin_blokada       5	// aktywny stan wysoki - blokada głównie od temperatury -> do sekwencera?
 #define doPin_ResetAlarmu      	6	// reset alarmu sprzętowego na płytce zabezpieczeń
 #define diPin_AlarmOdIDD	7	// alarm od przekroczenia IDD z płytki zabezpieczeń
-#define diPin_We_PTT          	8		// wejście PTT z gniazda (z TRX)
+// D8 zwolnione
+#define diPin_We_PTT          	63		// wejście PTT z gniazda (z TRX) A9 zamiast REF_we; złącze J4 pin 2
 #define doPin_BIAS   		9		// BIAS w PA pin 9
 /*
  * na przyszłość: Fan1, Fan2, Fan3 sterowanie obrotami wentylatora
@@ -239,9 +249,7 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 #define BAND_D_PIN  	55	// band data D
 
 //
-// D20, D21 magistrala I2C -> nie do wykorzystania
 // digital pin 22-46 used by UTFT (resistive touch)
-// 47-53 wolne
 
 // zapisywanie w EEPROM: Auto/Manual i pasmo
 #define COLDSTART_REF      0x12   	// When started, the firmware examines this "Serial Number"
@@ -271,7 +279,7 @@ float rev_pwr;
 #define SWR_SAMPLES_CNT             1
 
 // Define the boolValue variables
-bool pttValue = false;
+volatile bool pttValue = false;
 
 // zmienne powodujące przejście PA w tryb standby -> blokada nadawania (blokada PTT)
 bool stbyValue = false;
@@ -1015,6 +1023,13 @@ ISR (TIMER3_COMPA_vect)
 #endif
 }  // end of TIMER3_COMPA_vect
 
+// choose a valid PinChangeInterrupt pin of your Arduino board
+// definicje dla przerwań od PTT
+#define pinPTT 63
+//#define PCINT_MODE CHANGE
+//#define PCINT_FUNCTION blinkLed
+#define SCL_PIN 21
+
 void setup()
 {
 	pinMode(BL_ONOFF_PIN, OUTPUT);  	//backlight
@@ -1210,6 +1225,14 @@ void setup()
 		genOutputEnable = true;
 		infoString = "Startup completed.";
 	}
+	  // set pins to input with a pullup, led to output
+	  pinMode(LED_BUILTIN, OUTPUT);
+	  pinMode(pinPTT, INPUT_PULLUP);
+//	  pinMode(SCL_PIN, OUTPUT);
+
+	  // attach the new PinChangeInterrupt
+	  attachPCINT(digitalPinToPCINT(pinPTT), pttSerwis, CHANGE);
+
 }
 
 void loop()
@@ -1540,11 +1563,11 @@ void loop()
 		}
 		else
 		{
+			digitalWrite(doPin_BIAS, LOW);
+			digitalWrite(doPin_P12PTT, LOW);
 			txRxBox.setColorValue(vgaBackgroundColor);
 			txRxBox.setColorBack(VGA_GREEN);
 			txRxBox.setText("OPR");
-			digitalWrite(doPin_BIAS, LOW);
-			digitalWrite(doPin_P12PTT, LOW);
 		}
 		digitalWrite(doPin_blokada, LOW);
 	}
@@ -1696,7 +1719,7 @@ void loop()
 	 * 3 -> 30ms float
 	 * 6 -> 5ms integer
 	 */
-
+	//digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
 #else
 	// Keep the cycle time constant
 	timeAtCycleEnd = millis();
@@ -1871,7 +1894,7 @@ void read_inputs()
 	getTemperatura2(aiPin_temperatura2, Rf2);
 	getTemperatura3(aiPin_temperatura3);
 
-	pttValue = not digitalRead(diPin_We_PTT);					// aktywny stan niski
+	//pttValue = not digitalRead(diPin_We_PTT);					// aktywny stan niski
 /*
 	stbyValue = digitalRead(diPin_stby);					// aktywny stan wysoki
 	ImaxValue = not digitalRead(diPin_Imax);				// aktywny stan niski
@@ -2043,5 +2066,19 @@ void switch_bands()
 #endif
 	}
 	prev_band = current_band;
+}
+void pttSerwis(void)
+{
+	pttValue = not digitalRead(diPin_We_PTT);					// aktywny stan niski
+	if (pttValue and genOutputEnable)
+	{
+		digitalWrite(doPin_P12PTT, HIGH);
+	}
+	else
+	{
+		digitalWrite(doPin_P12PTT, LOW);
+
+	}
+  digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
 }
 

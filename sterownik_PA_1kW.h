@@ -34,5 +34,6 @@ float calc_SWR(int forward, int ref);
 bool UpdatePowerAndVSWR();
 void startCounting (unsigned int ms);
 void switch_bands();
+void pttSerwis(void);
 
 #endif /* STEROWNIK_PA_1KW_H_ */
