@@ -25,6 +25,7 @@
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/UTouch}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/EEPROM/src}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/PinChangeInterrupt/src}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/TimerOne}&quot;"/>
 								</option>
 								<inputType id="io.sloeber.compiler.cpp.sketch.input.338665734" name="CPP source files" superClass="io.sloeber.compiler.cpp.sketch.input"/>
 							</tool>
@@ -36,6 +37,7 @@
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/UTouch}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/EEPROM/src}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/PinChangeInterrupt/src}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/TimerOne}&quot;"/>
 								</option>
 								<inputType id="io.sloeber.compiler.c.sketch.input.1178496204" name="C Source Files" superClass="io.sloeber.compiler.c.sketch.input"/>
 							</tool>
@@ -47,6 +49,7 @@
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/UTouch}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/EEPROM/src}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/PinChangeInterrupt/src}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/TimerOne}&quot;"/>
 								</option>
 								<inputType id="io.sloeber.compiler.S.sketch.input.2051283506" name="Assembly source files" superClass="io.sloeber.compiler.S.sketch.input"/>
 							</tool>
@@ -57,7 +60,7 @@
 						</toolChain>
 					</folderInfo>
 					<sourceEntries>
-						<entry excluding="libraries/PinChangeInterrupt/.github|libraries/UTouch/hardware|libraries/URTouch/License|libraries/URTouch/hardware|libraries/URTouch/Documentation|libraries/UTFT/Tools|libraries/UTFT/tft_drivers|libraries/UTFT/License|libraries/UTFT/hardware|libraries/UTFT/Documentation|libraries/?*/**/?xamples/**|libraries/?*/**/?xtras/**|libraries/?*/**/test*/**|libraries/?*/**/third-party/**|libraries/**/._*|libraries/?*/utility/*/*" flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name=""/>
+						<entry excluding="libraries/TimerOne/docs|libraries/TimerOne/config|libraries/PinChangeInterrupt/.github|libraries/UTouch/hardware|libraries/URTouch/License|libraries/URTouch/hardware|libraries/URTouch/Documentation|libraries/UTFT/Tools|libraries/UTFT/tft_drivers|libraries/UTFT/License|libraries/UTFT/hardware|libraries/UTFT/Documentation|libraries/?*/**/?xamples/**|libraries/?*/**/?xtras/**|libraries/?*/**/test*/**|libraries/?*/**/third-party/**|libraries/**/._*|libraries/?*/utility/*/*" flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name=""/>
 					</sourceEntries>
 				</configuration>
 			</storageModule>

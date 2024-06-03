@@ -35,5 +35,6 @@ bool UpdatePowerAndVSWR();
 void startCounting (unsigned int ms);
 void switch_bands();
 void pttSerwis(void);
+void biasSerwis(void);
 
 #endif /* STEROWNIK_PA_1KW_H_ */

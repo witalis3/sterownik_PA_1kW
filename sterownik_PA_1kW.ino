@@ -3,6 +3,9 @@
 #include <UTFT.h>
 #include <UTouch.h>
 #include "PinChangeInterrupt.h"
+#include "TimerOne.h"
+
+#include "sterownik_PA_1kW.h"
 
 /*
  Na bazie sterownika DC5ME:
@@ -18,6 +21,8 @@
  	 - biblioteki UTouch i UTFT ze strony sprzedawcy (buydisplay)
  	 - fonty ze strony rinkydinkelectronics
 wersja dla SP3JDZ:
+	- obsługa PTT i BIAS na przerwaniach
+	------------------- pomiar f do zrobienia
 	- miernik częstotliwości na bazie :
 	// Timer and Counter example for Mega2560
 	// Author: Nick Gammon
@@ -34,14 +39,12 @@ wersja dla SP3JDZ:
 -----------------------------------------------------------------
  ToDo
  	 - ver. 1.11.0 wersja dla SP3JDZ
- 	 	 - rozważyć użycie
+ 	 	 - użycie
  	 	 	 - biblioteki dla PCINT PinChangeInterrupt do obsługi PTT na PCINT
- 	 	 	 - lub przerwaniue od zewnątrz -> tylko wybrane piny!
- 	 	 	 - timerOne dla kontroli czasów
- 	 	 - PTT na przerwaniach
- 	 	 	 -
+ 	 	 	 - timerOne dla kontroli czasów opóźnień (BIAS względem PTT)
  	 	 - oblutowane! IDD
  	 	 - oblutowane! forward
+ 	 	 --------------------------------- przerwa...
  	 	 - reszta wejść na razie zasymulowana do testów miernika częstotliwości
  	 	 	 - testy przerwane
  	 	 - zrobione! przełączanie pasm przenieść ze sterownik_FT810
@@ -141,7 +144,6 @@ wersja dla SP3JDZ:
 			 - po przekroczeniu prądu brak kodu BCD?
  */
 
-#include "sterownik_PA_1kW.h"
 
 // zmienne na potrzeby miernika częstotliwości:
 // these are checked for in the main program
@@ -280,6 +282,8 @@ float rev_pwr;
 
 // Define the boolValue variables
 volatile bool pttValue = false;
+volatile bool biasValue = false;
+volatile unsigned long biasTime = 0;
 
 // zmienne powodujące przejście PA w tryb standby -> blokada nadawania (blokada PTT)
 bool stbyValue = false;
@@ -1029,6 +1033,10 @@ ISR (TIMER3_COMPA_vect)
 //#define PCINT_MODE CHANGE
 //#define PCINT_FUNCTION blinkLed
 #define SCL_PIN 21
+#define SDA_PIN 20
+// obsługa BIAS begin
+volatile unsigned long milis = 0;
+// obsługa DIAS end
 
 void setup()
 {
@@ -1089,20 +1097,10 @@ void setup()
 
 	pinMode(diPin_We_PTT, INPUT_PULLUP);
 	pinMode(doPin_BIAS, OUTPUT);
+	digitalWrite(doPin_BIAS, LOW);
 	pinMode(doPin_P12PTT, OUTPUT);
-	//pinMode(diPin_SWR_LPF_max, INPUT_PULLUP); 	// aktywny stan niski
-	//pinMode(diPin_stby, INPUT_PULLUP);
-	//pinMode(diPin_Imax, INPUT_PULLUP);
-	//pinMode(diPin_Pmax, INPUT_PULLUP);
-	//pinMode(diPin_SWRmax, INPUT_PULLUP);
-	/*
-	pinMode(doPin_ATT1, OUTPUT);
-	digitalWrite(doPin_ATT1, HIGH);	// stan aktywny niski
-	pinMode(doPin_ATT2, OUTPUT);
-	digitalWrite(doPin_ATT2, HIGH);	// stan aktywny niski
-	pinMode(doPin_ATT3, OUTPUT);
-	digitalWrite(doPin_ATT3, HIGH);	// stan aktywny niski
-*/
+	digitalWrite(doPin_P12PTT, LOW);
+
 	myGLCD.setFont(GroteskBold32x64);
 	myGLCD.setColor(vgaValueColor);
 	myGLCD.print("Sterownik PA", CENTER, 50);
@@ -1190,7 +1188,7 @@ void setup()
 	}
 	else if (pa1AmperBox.getValue() > thresholdCurrent)
 	{
-		errorString = "Startup error: PA 1 Current not 0A";
+		errorString = "Startup error: PA Current not 0A";
 	}
 	else if (pwrBar.getValue() > thresholdPower)
 	{
@@ -1225,14 +1223,12 @@ void setup()
 		genOutputEnable = true;
 		infoString = "Startup completed.";
 	}
-	  // set pins to input with a pullup, led to output
-	  pinMode(LED_BUILTIN, OUTPUT);
-	  pinMode(pinPTT, INPUT_PULLUP);
-//	  pinMode(SCL_PIN, OUTPUT);
 
-	  // attach the new PinChangeInterrupt
+	  // obsługa PTT z TRXa na przerwaniu
 	  attachPCINT(digitalPinToPCINT(pinPTT), pttSerwis, CHANGE);
-
+	  // BIAS serwis uruchamiany co 1ms
+	  Timer1.initialize(1000);	// 1ms
+	  Timer1.attachInterrupt(biasSerwis);
 }
 
 void loop()
@@ -1555,16 +1551,12 @@ void loop()
 		{
 			swrValue = calc_SWR(forwardValue, returnValue);
 			swrBar.setValue(swrValue, drawWidgetIndex == 2);
-			digitalWrite(doPin_BIAS, HIGH);
-			digitalWrite(doPin_P12PTT, HIGH);
 			txRxBox.setColorValue(vgaBackgroundColor);
 			txRxBox.setColorBack(VGA_RED);
 			txRxBox.setText(" TX");
 		}
 		else
 		{
-			digitalWrite(doPin_BIAS, LOW);
-			digitalWrite(doPin_P12PTT, LOW);
 			txRxBox.setColorValue(vgaBackgroundColor);
 			txRxBox.setColorBack(VGA_GREEN);
 			txRxBox.setText("OPR");
@@ -1719,7 +1711,6 @@ void loop()
 	 * 3 -> 30ms float
 	 * 6 -> 5ms integer
 	 */
-	//digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
 #else
 	// Keep the cycle time constant
 	timeAtCycleEnd = millis();
@@ -2070,15 +2061,35 @@ void switch_bands()
 void pttSerwis(void)
 {
 	pttValue = not digitalRead(diPin_We_PTT);					// aktywny stan niski
+	// ToDo ewentualnie pamiętać starą wartość i zmieniać wyjscie tylko po zmianie wartości pttValue
 	if (pttValue and genOutputEnable)
 	{
 		digitalWrite(doPin_P12PTT, HIGH);
+		biasValue = true;
 	}
 	else
 	{
 		digitalWrite(doPin_P12PTT, LOW);
-
+		biasValue = false;
 	}
-  digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
+}
+void biasSerwis(void)
+{
+	//digitalWrite(doPin_BIAS, HIGH);
+	//digitalWrite(doPin_BIAS, !digitalRead(doPin_BIAS));
+	//digitalWrite(SDA_PIN, !digitalRead(SDA_PIN));
+	if (biasValue)
+	{
+		biasTime++;
+		if (biasTime >= 10)		// opóźnienie BIAS względem PTT o 10ms (RM85 ma 7ms czas zadziałania)
+		{
+			digitalWrite(SDA_PIN, HIGH);
+		}
+	}
+	else
+	{
+		biasTime = 0;
+		digitalWrite(SDA_PIN, LOW);
+	}
 }
 

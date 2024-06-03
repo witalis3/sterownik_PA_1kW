@@ -52,6 +52,11 @@
 			<location>C:/Users/witol/Documents/Arduino/libraries/PinChangeInterrupt</location>
 		</link>
 		<link>
+			<name>libraries/TimerOne</name>
+			<type>2</type>
+			<location>C:/Users/witol/Documents/Arduino/libraries/TimerOne</location>
+		</link>
+		<link>
 			<name>libraries/UTFT</name>
 			<type>2</type>
 			<location>C:/Users/witol/Documents/Arduino/libraries/UTFT</location>
