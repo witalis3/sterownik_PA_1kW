@@ -9,8 +9,6 @@
 #define STEROWNIK_PA_1KW_H_
 
 #define ACS713	// pomiar prądu czujnikiem Halla
-//#define SP2HYO
-//#define ALTER	// inne przyporządkowanie wejść dla kodu DCBA i wyjść dla tłumików
 //#define DEBUG
 //#define DEBUGt
 #define CZAS_PETLI
@@ -27,5 +25,7 @@ void getTemperatura3(uint8_t pin);
 void read_inputs();
 float calc_SWR(int forward, int ref);
 bool UpdatePowerAndVSWR();
+void pttSerwis(void);
+void biasSerwis(void);
 
 #endif /* STEROWNIK_PA_1KW_H_ */

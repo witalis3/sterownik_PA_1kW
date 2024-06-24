@@ -1,8 +1,9 @@
 #include "Arduino.h"
 #include <EEPROM.h>
 #include <UTFT.h>
-#include <SoftwareSerial.h>
 #include <UTouch.h>
+#include "PinChangeInterrupt.h"
+#include "TimerOne.h"
 
 #include "sterownik_PA_1kW.h"
 
@@ -30,10 +31,16 @@
 -----------------------------------------------------------------
  ToDo
 	- ver. 1.10.0 wersja dla SP3OCC
+ 	 	 - we PTT i BIAS na przerwaniach
+ 	 	 	 - przeniesienie we PTT z gniazda (z TRX) J6 pin 2 na 63 (A9) -> zamiast REF_we -> złącze J4 pin 2
+
+		- co z obsługą alarmów od przekroczenia temperatury T1 i T2 z płytki zabezpieczeń?
+		- uśrednianie napięcia 12 i 53V
  	 	 - zrobione! pomiar prądu ACS713 30A
  	 	 - zrobione! pomiar temperatury tranzystorów: czujniki KTY81/110
  	 	 - zrobione! pomiar temperatury radiatora LM35
- 	 	 - zrobione! we PTT
+
+
  	 	 - 400W pokazuje 225W
  	 	 - pokazuje 54,5V; uśrednianie
 
@@ -143,11 +150,11 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
  * wejścia/wyjścia analogowe/cyfrowe A0-A15:
  *
  */
-#define BL_ONOFF_PIN     	54	// A0
+#define BL_ONOFF_PIN     	54	// A0 sterowanie podświetleniem
 #define aiPin_pwrForward   	6	// A6
 #define aiPin_pwrReturn    	7	// A7
-#define aiPin_drainVoltage 	8	// pomiar 48V
-#define aiPin_aux1Voltage  	9	// pomiar 12V
+#define aiPin_drainVoltage 	A8	// pomiar 48V D62 pin 2 złącza A600 Vsense; J4 pin 3
+#define aiPin_aux1Voltage  	A3	// pomiar 12V D57 napięcie z dzielnika 1:3 z 12V; J3 pin 3
 #define aiPin_pa1Amper     	15	// prąd drenu
 #define aiPin_temperatura1	12	//  temperatura pierwszego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
 #define aiPin_temperatura2	13	// temperatura drugiego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
@@ -165,13 +172,14 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 
 /*
  * wejścia/wyjścia cyfrowe:
- * D0, D1 zarezerowowane dla serial debug
+ * D0, D1 zarezerowowane dla ew. serial debug na USB
  *
  */
 
 #define doPin_P12PTT	 56	// A2 P12PTT wyjście na przekaźniki N/O
 #ifdef CZAS_PETLI
-#define doPin_CZAS_PETLI 1
+#define doPin_CZAS_PETLI 21		// D21/noga 75 Arduino Mega
+#define doPin_CZAS_PETLI2 20		// D20/noga 74 Arduino Mega
 #endif
 // wyjścia sterujące LPFem:
 #define doPin_40_60m	2
@@ -184,7 +192,8 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 #define doPin_blokada       5	// aktywny stan wysoki - blokada głównie od temperatury -> do sekwencera?
 #define doPin_ResetAlarmu      	6	// reset alarmu sprzętowego na płytce zabezpieczeń
 #define diPin_AlarmOdIDD	7	// alarm od przekroczenia IDD z płytki zabezpieczeń
-#define diPin_We_PTT          	8		// wejście PTT z gniazda (z TRX)
+// D8 zwolnione
+#define diPin_We_PTT          	63		// wejście PTT z gniazda (z TRX); A9 zamiast REF_we; złącze J4 pin 2
 #define doPin_BIAS   		9		// BIAS w PA pin 9
 /*
  * na przyszłość: Fan1, Fan2, Fan3 sterowanie obrotami wentylatora
@@ -193,6 +202,7 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 #define diPin_Pmax        12	// przekroczenie mocy sterowania (na wejściu)
 */
 #define doPin_FanOn   13	// włączenie wentylatora
+// ToDo na razie niewykorzystane
 #define dinAlaOdT1		21	// wejście alarmu od przekroczenia temperatury tranzystora 1
 #define dinAlaOdT2		20	// wejście alarmu od przekroczenia temperatury tranzystora 2
 
@@ -219,9 +229,7 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 #define diPin_MniejszaMoc	21	// ustalenie skali wskaźnika mocy (np. 2kW/500W)
 */
 //
-// D20, D21 magistrala I2C -> nie do wykorzystania
 // digital pin 22-46 used by UTFT (resistive touch)
-// 47-53 wolne
 
 // zapisywanie w EEPROM: Auto/Manual i pasmo
 #define COLDSTART_REF      0x12   	// When started, the firmware examines this "Serial Number"
@@ -251,7 +259,9 @@ float rev_pwr;
 #define SWR_SAMPLES_CNT             1
 
 // Define the boolValue variables
-bool pttValue = false;
+volatile bool pttValue = false;
+volatile bool biasValue = false;
+volatile unsigned long biasTime = 0;
 
 // zmienne powodujące przejście PA w tryb standby -> blokada nadawania (blokada PTT)
 bool stbyValue = false;
@@ -278,7 +288,7 @@ bool errLedValue;
 #define pwrReturnFactor (inputFactorVoltage * (222.0/5.0))
 #endif
 #define drainVoltageFactor (inputFactorVoltage * (120.0/5.0))// 5V Input = 60V PA
-#define aux1VoltageFactor (inputFactorVoltage * (19.35/5.0)) // 5V Input = 30V PA
+#define aux1VoltageFactor (inputFactorVoltage * (15.94/5.0)) // 5V Input = 30V PA
 #define aux2VoltageFactor (inputFactorVoltage * (15.0/5.0)) // 5V Input = 15V PA
 #ifdef ACS713
 #define pa1AmperFactor (inputFactorVoltage * (30/4.0))    // 133mV/A ACS713
@@ -313,6 +323,7 @@ enum
 {
 	BAND_160 = 0,
 	BAND_80,
+	BAND_60,
 	BAND_40,
 	BAND_30,
 	BAND_20,
@@ -942,37 +953,27 @@ DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 500, 150, 350, vgaBarColor, v
 PushButton Down(20, 20, 72, 165);
 PushButton Up(185, 20, 72, 165);
 
+// definicje dla przerwań od PTT
+#define pinPTT 63
+#define SCL_PIN 21
+#define SDA_PIN 20
+volatile unsigned long milis = 0;
+
 void setup()
 {
 	pinMode(BL_ONOFF_PIN, OUTPUT);  	//backlight
 	digitalWrite(BL_ONOFF_PIN, LOW);	//off
-#ifdef CZAS_PETLI
-	pinMode(doPin_CZAS_PETLI, OUTPUT);
-#endif
-/*
-#ifdef SP2HYO
-	pinMode(diPin_MniejszaMoc, INPUT_PULLUP);
-	if (digitalRead(diPin_MniejszaMoc) == LOW)
-	{
-		pwrBar.setMinValue(minValue);
-		pwrBar.setMaxValue(maxValue);
-		pwrBar.setWarnValue1(warnValue1);
-		pwrBar.setWarnValue2(warnValue2);
-	}
-#endif
-*/
-	// Run the setup and init everything
-		Serial1.begin(115200);
+	Serial1.begin(115200);	// RS na złączu J1
 	if (eeprom_read_byte(0) != COLDSTART_REF)
 	{
 		EEPROM.write(1, bandIdx);
 		EEPROM.write(2, mode);
 		EEPROM.write(0, COLDSTART_REF); // COLDSTART_REF in first byte indicates all initialized
 #ifdef DEBUG
-		Serial.println("writing initial values into memory");
+		Serial1.println("writing initial values into memory");
 #endif
 	}
-	else                       // EEPROM contains stored data, retrieve the data
+	else  // EEPROM contains stored data, retrieve the data
 	{
 		// read the current band
 		bandIdx = EEPROM.read(1);
@@ -993,7 +994,7 @@ void setup()
 	// pinMode(8, OUTPUT);  	//backlight
 	// digitalWrite(8, HIGH);	//on
 	// -------------------------------------------------------------
-	// - stan wysoki jest wymuszony rezystorem na nóżce 39 wyświetlacza - pin 8 jest zwolniony
+	// tutaj backlight sterowany jest sygnałem BL_ONOFF_PIN na nodze 54 (A0)
 	myGLCD.clrScr();
 
 	myTouch.InitTouch(LANDSCAPE);
@@ -1027,39 +1028,26 @@ void setup()
 	//pinMode(diPin_bandData_C, INPUT_PULLUP);
 	//pinMode(diPin_bandData_D, INPUT_PULLUP);
 
+#ifdef CZAS_PETLI
+	pinMode(doPin_CZAS_PETLI, OUTPUT);
+	//pinMode(doPin_CZAS_PETLI2, OUTPUT);
+#endif
+
 	pinMode(doPin_air1, OUTPUT);
 	pinMode(doPin_air2, OUTPUT);
 
 	pinMode(diPin_We_PTT, INPUT_PULLUP);
 	pinMode(doPin_BIAS, OUTPUT);
+	digitalWrite(doPin_BIAS, LOW);
 	pinMode(doPin_P12PTT, OUTPUT);
-	//pinMode(diPin_SWR_LPF_max, INPUT_PULLUP); 	// aktywny stan niski
-	//pinMode(diPin_stby, INPUT_PULLUP);
-	//pinMode(diPin_Imax, INPUT_PULLUP);
-	//pinMode(diPin_Pmax, INPUT_PULLUP);
-	//pinMode(diPin_SWRmax, INPUT_PULLUP);
-	/*
-	pinMode(doPin_ATT1, OUTPUT);
-	digitalWrite(doPin_ATT1, HIGH);	// stan aktywny niski
-	pinMode(doPin_ATT2, OUTPUT);
-	digitalWrite(doPin_ATT2, HIGH);	// stan aktywny niski
-	pinMode(doPin_ATT3, OUTPUT);
-	digitalWrite(doPin_ATT3, HIGH);	// stan aktywny niski
-*/
+	digitalWrite(doPin_P12PTT, LOW);
+
 	myGLCD.setFont(GroteskBold32x64);
 	myGLCD.setColor(vgaValueColor);
 	myGLCD.print("PA  A600", CENTER, 50);
 	myGLCD.setFont(Grotesk16x32);
-	myGLCD.print("160m - 6m", CENTER, 150);
+	myGLCD.print("160m - 10m", CENTER, 150);
 	digitalWrite(BL_ONOFF_PIN, HIGH);	//backlight on
-	//myGLCD.print("BLF 188XR", CENTER, 200);
-
-/*  myGLCD.setFont(franklingothic_normal);
-	myGLCD.print("TNX TO", CENTER, 290);
-	myGLCD.print("DC5ME DF1AI DG2MEL DL3MBG DL6MFK", CENTER, 325);
-	myGLCD.print("DL9MBI DO1FKP DO5HT K8FOD ON7PQ", CENTER, 350);
-	myGLCD.print("DE DJ8QP", CENTER, 375);
-*/
 	delay(1000);
 	myGLCD.clrScr();
 
@@ -1141,7 +1129,7 @@ void setup()
 	}
 	else if (pa1AmperBox.getValue() > thresholdCurrent)
 	{
-		errorString = "Startup error: PA 1 Current not 0A";
+		errorString = "Startup error: PA Current not 0A";
 	}
 	else if (pwrBar.getValue() > thresholdPower)
 	{
@@ -1176,6 +1164,12 @@ void setup()
 		genOutputEnable = true;
 		infoString = "Startup completed.";
 	}
+
+	  // obsługa PTT z TRXa na przerwaniu
+	  attachPCINT(digitalPinToPCINT(diPin_We_PTT), pttSerwis, CHANGE);
+	  // BIAS serwis uruchamiany co 1ms
+	  Timer1.initialize(1000);	// 1ms
+	  Timer1.attachInterrupt(biasSerwis);
 }
 
 void loop()
@@ -1478,8 +1472,6 @@ void loop()
 		{
 			swrValue = calc_SWR(forwardValue, returnValue);
 			swrBar.setValue(swrValue, drawWidgetIndex == 2);
-			digitalWrite(doPin_BIAS, HIGH);
-			digitalWrite(doPin_P12PTT, HIGH);
 			txRxBox.setColorValue(vgaBackgroundColor);
 			txRxBox.setColorBack(VGA_RED);
 			txRxBox.setText(" TX");
@@ -1489,8 +1481,6 @@ void loop()
 			txRxBox.setColorValue(vgaBackgroundColor);
 			txRxBox.setColorBack(VGA_GREEN);
 			txRxBox.setText("OPR");
-			digitalWrite(doPin_BIAS, LOW);
-			digitalWrite(doPin_P12PTT, LOW);
 		}
 		digitalWrite(doPin_blokada, LOW);
 	}
@@ -1708,7 +1698,16 @@ void loop()
 	}
 
 #ifdef CZAS_PETLI
-	PORTE ^= (1<<PE1);		// nr portu na sztywno! = 1
+	PORTD = PORTD ^ (1 << PD0);			// nr portu na sztywno! = D21 PD0; J14 -> 2 noga (I2C-> SCL)
+	/*
+	 * o dziwo: bez alarmów pętla 3ms
+	 *  teraz czas zróżnicowany: od 5ms do 30ms
+	 * bez indeksu (indeks = 0 bez odświeżania wyświetlania ) - 4,8ms -> niby minimum
+	 * indeks 1 (pwrBar): 30ms
+	 * drawWidgetIndex 2 (swrBar): 5ms! -> tylko przy nadawaniu będzie więcej!
+	 * 3 -> 30ms float
+	 * 6 -> 5ms integer
+	 */
 #else
 	// Keep the cycle time constant
 	timeAtCycleEnd = millis();
@@ -1752,10 +1751,12 @@ void getTemperatura1(uint8_t pin, int Rf)
 	float part_point = part_point_left / (part_point_left + part_point_right);
 	float TRX_RF_Temperature_measured = (power_left * (1.0f - part_point)) + (power_right * (part_point));
 
-	if (TRX_RF_Temperature_measured < -100.0f) {
+	if (TRX_RF_Temperature_measured < -100.0f)
+	{
 		TRX_RF_Temperature_measured = 75.0f;
 	}
-	if (TRX_RF_Temperature_measured < 0.0f) {
+	if (TRX_RF_Temperature_measured < 0.0f)
+	{
 		TRX_RF_Temperature_measured = 0.0f;
 	}
 
@@ -1875,7 +1876,7 @@ void read_inputs()
 	getTemperatura2(aiPin_temperatura2, Rf2);
 	getTemperatura3(aiPin_temperatura3);
 
-	pttValue = not digitalRead(diPin_We_PTT);					// aktywny stan niski
+	//pttValue = not digitalRead(diPin_We_PTT);					// aktywny stan niski
 /*
 	stbyValue = digitalRead(diPin_stby);					// aktywny stan wysoki
 	ImaxValue = not digitalRead(diPin_Imax);				// aktywny stan niski
@@ -1891,7 +1892,7 @@ float calc_SWR(int forward, int ref)
 {
 #define MAX_SWR	9.9
 	float swr;
-	if (forward > 0)
+	if (forward > 5)		// min 5W
 	{
 		if (forward <= ref)
 		{
@@ -1980,4 +1981,43 @@ bool UpdatePowerAndVSWR()
 		retval = true;
 	}
 	return retval;
+}
+void pttSerwis(void)
+{
+	if (not stbyValue)
+	{
+		pttValue = not digitalRead(diPin_We_PTT);		// aktywny stan niski
+		// ToDo ewentualnie pamiętać starą wartość i zmieniać wyjście tylko po zmianie wartości pttValue
+		if (pttValue and genOutputEnable)
+		{
+			digitalWrite(doPin_P12PTT, HIGH);
+			biasValue = true;
+		}
+		else
+		{
+			digitalWrite(doPin_P12PTT, LOW);
+			biasValue = false;
+		}
+	}
+	else
+	{
+		digitalWrite(doPin_P12PTT, LOW);
+		biasValue = false;
+	}
+}
+void biasSerwis(void)
+{
+	if (biasValue)
+	{
+		biasTime++;
+		if (biasTime >= 10)		// opóźnienie BIAS względem PTT o 10ms (RM85 ma 7ms czas zadziałania)
+		{
+			digitalWrite(doPin_BIAS, HIGH);
+		}
+	}
+	else
+	{
+		biasTime = 0;
+		digitalWrite(doPin_BIAS, LOW);
+	}
 }
