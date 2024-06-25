@@ -13,5 +13,6 @@
 #define ALTER	// inne przyporządkowanie wejść dla kodu DCBA i wyjść dla tłumików
 //#define DEBUG
 
+byte IcomBand(void);
 
 #endif /* STEROWNIK_PA_1KW_H_ */

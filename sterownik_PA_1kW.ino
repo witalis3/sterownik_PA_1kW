@@ -116,12 +116,14 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
  *
  */
 
-#define BL_ONOFF_PIN     	54	// A0
+//#define BL_ONOFF_PIN     	54	// A0
+
+#define aiPin_Icom					0	// A0 wejście sygnału z Icom (CIV informacja o paśmie)
 #define aiPin_pwrForward   	1	// A1
 #define aiPin_pwrReturn    	2	// A2
 #define aiPin_drainVoltage 	3
 #define aiPin_aux1Voltage  	4	// 12V
-//						  	5	// wolne
+#define AUTO_ICOM			  	A5	// wybór źrodła automatycznego wyboru pasma: kodem DCBA czy napięciem z Icom; stan niski (masa) -> sterowanie z Icoma
 #define aiPin_pa1Amper     	6	// prąd drenu
 #define aiPin_temperatura1	7	// temperatura pierwszego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
 #define aiPin_temperatura2	8	// temperatura drugiego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
@@ -140,7 +142,7 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
  * D0, D1 zarezerowowane dla serial debug
  *
  */
-#define diPin_blok_Alarm_SWR	2	// wejście sygnału z ATU blokującego alarmy od SWRów na czas strojenia (stan wysoki aktywny)
+#define diPin_blok_Alarm_SWR		2	// wejście sygnału z ATU blokującego alarmy od SWRów na czas strojenia (stan wysoki aktywny)
 #define diPin_Termostat		3	// wejście alarmowe z termostatu
 #define doPin_SWR_ant		4	// informacja o przekroczeniu SWR (według wartości obliczonej na podstawie forwardValue i returnValue) na wyjściu antenowym
 								// aktywny stan niski
@@ -175,7 +177,6 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 #endif
 #define diPin_MniejszaMoc	21	// ustalenie skali wskaźnika mocy (np. 2kW/500W)
 //
-// D20, D21 magistrala I2C -> nie do wykorzystania
 // digital pin 22-46 used by UTFT (resistive touch)
 // 47-53 wolne
 
@@ -262,6 +263,12 @@ enum
 	AUTO
 };
 byte mode = MANUAL;
+enum
+{
+	YAESU,
+	ICOM
+};
+byte autoMode = YAESU;
 enum
 {
 	BAND_160 = 0,
@@ -905,8 +912,9 @@ bool UpdatePowerAndVSWR();
 void setup()
 {
 
-	pinMode(BL_ONOFF_PIN, OUTPUT);  	//backlight
-	digitalWrite(BL_ONOFF_PIN, LOW);	//off
+//	pinMode(BL_ONOFF_PIN, OUTPUT);  	//backlight
+//	digitalWrite(BL_ONOFF_PIN, LOW);	//off
+	pinMode(aiPin_Icom, INPUT_PULLUP);
 #ifdef SP2HYO
 	pinMode(diPin_MniejszaMoc, INPUT_PULLUP);
 	if (digitalRead(diPin_MniejszaMoc) == LOW)
@@ -996,7 +1004,7 @@ void setup()
 	myGLCD.print("LDMOS-PA  2kW", CENTER, 50);
 	myGLCD.setFont(Grotesk16x32);
 	myGLCD.print("160m - 6m", CENTER, 150);
-	digitalWrite(BL_ONOFF_PIN, HIGH);	//backlight on
+	//digitalWrite(BL_ONOFF_PIN, HIGH);	//backlight on
 	//myGLCD.print("BLF 188XR", CENTER, 200);
 
 /*  myGLCD.setFont(franklingothic_normal);
@@ -1436,19 +1444,29 @@ void loop()
 			10m 	1001
 			6m 		1010
 		 */
-		AutoBandIdx = 0;
-		AutoBandIdx = digitalRead(diPin_bandData_D) << 3 | digitalRead(diPin_bandData_C) << 2 | digitalRead(diPin_bandData_B) << 1 | digitalRead(diPin_bandData_A);
-		AutoBandIdx = AutoBandIdx -1;
-		if (AutoBandIdx >= 0 and AutoBandIdx <= 9)
+		if (autoMode == YAESU)
 		{
-			bandIdx = AutoBandIdx;
-			if (bandIdx != oldBandIdx)
+			AutoBandIdx = 0;
+			AutoBandIdx = digitalRead(diPin_bandData_D) << 3
+					| digitalRead(diPin_bandData_C) << 2
+					| digitalRead(diPin_bandData_B) << 1
+					| digitalRead(diPin_bandData_A);
+			AutoBandIdx = AutoBandIdx - 1;
+			if (AutoBandIdx >= 0 and AutoBandIdx <= 9)
 			{
-				bandBox.setText(BAND[bandIdx]);
-				pwrBar.resetValueMax();
-				swrBar.resetValueMax();
-				//oldBandIdx = bandIdx;	-> zapamiętanie oldBnadIdx dopiero po przełączaniu LPFa
+				bandIdx = AutoBandIdx;
+				if (bandIdx != oldBandIdx)
+				{
+					bandBox.setText(BAND[bandIdx]);
+					pwrBar.resetValueMax();
+					swrBar.resetValueMax();
+					//oldBandIdx = bandIdx;	-> zapamiętanie oldBnadIdx dopiero po przełączeniu LPFa
+				}
 			}
+		}
+		else
+		{
+			bandIdx = IcomBand();
 		}
 	}
 
@@ -1666,6 +1684,14 @@ void read_inputs()
 	SWRLPFmaxValue = (not digitalRead(diPin_SWR_LPF_max)) and (not digitalRead(diPin_blok_Alarm_SWR));
 	SWR_ster_max = not digitalRead(diPin_SWR_ster_max);		// aktywny stan niski
 	TermostatValue = not digitalRead(diPin_Termostat);		// aktywny stan niski
+	if (digitalRead(AUTO_ICOM == HIGH))
+	{
+		autoMode = YAESU;
+	}
+	else
+	{
+		autoMode = ICOM;
+	}
 }
 float calc_SWR(int forward, int ref)
 {
@@ -1761,3 +1787,96 @@ bool UpdatePowerAndVSWR()
 	}
 	return retval;
 }
+/*
+ * zwraca kod pasma na podstawie napięcia na pinie aiPinIcom
+ */
+byte IcomBand(void)
+{
+	byte band;
+	unsigned int u_icom;
+	u_icom = analogRead(aiPin_Icom);
+	// ToDo zmienić zakresy -> na odwrót; sprawdzić w IC7600
+    if (u_icom < 57)
+        band = BAND_160;
+    else
+        if (u_icom < 171)
+        band = BAND_80;
+    else
+        if (u_icom < 285)
+        band = BAND_40;
+    else
+        if (u_icom < 399)
+        band = BAND_30;
+    else
+        if (u_icom < 513)
+        band = BAND_20;
+    else
+        if (u_icom < 627)
+        band = BAND_17;
+    else
+        if (u_icom < 741)
+        band = BAND_15;
+    else
+        if (u_icom < 855)
+        band =BAND_12;
+    else
+        if (u_icom < 969)
+        band = BAND_10;
+    else
+        band = BAND_6;
+	return band;
+}
+//         icom        ADC        результат преобразования
+//1,8 -    7.5v        2.5v       1000
+//3.5 -    6.1v        2.0v       813
+//7 -      5.1v        1.7v       680
+//10 -     0v            0v        0
+//14 -     4.1v        1.36v      546
+//18/21 -  3.2v        1.0v       427
+//24/28 -  2.25v      0.75v       300
+
+// 160m = 7.0-8.0V
+//80-75m = 6.0-6.8V
+//40m = 5.0-5.8V
+//30m = 0V
+//20m = 4.0-4.8V
+//17m-15m = 3.0-3.8V
+//12m-10m = 2.0-2.8V
+//6m-2m = 1.0-1.9V
+
+/*
+VALUE = analogRead(AD);
+if (counter == 5) {
+    VOLTAGE = float(VALUE) * 5.0 / 1023.0;
+
+    //=====[ Icom ACC voltage range ]===========================================================
+
+    if (VOLTAGE > 0.73 && VOLTAGE < 1.00 ) {BAND=10;}  //   6m   * * * * * * * * * * * * * * * *
+    if (VOLTAGE > 1.00 && VOLTAGE < 1.09 ) {BAND=9;}   //  10m   *           Need              *
+    if (VOLTAGE > 1.09 && VOLTAGE < 1.32 ) {BAND=8;}   //  12m   *    calibrated to your       *
+    if (VOLTAGE > 1.32 && VOLTAGE < 1.55 ) {BAND=7;}   //  15m   *         own ICOM            *
+    if (VOLTAGE > 1.55 && VOLTAGE < 1.77 ) {BAND=6;}   //  17m   *     ----------------        *
+    if (VOLTAGE > 1.77 && VOLTAGE < 2.24 ) {BAND=5;}   //  20m   *    (These values have       *
+    if (VOLTAGE > 0.10 && VOLTAGE < 0.50 ) {BAND=4;}   //  30m   *   been measured by any)     *
+    if (VOLTAGE > 2.24 && VOLTAGE < 2.73 ) {BAND=3;}   //  40m   *          ic-746             *
+    if (VOLTAGE > 2.73 && VOLTAGE < 2.99 ) {BAND=2;}   //  80m   *                             *
+    if (VOLTAGE > 2.99 && VOLTAGE < 4.00 ) {BAND=1;}   // 160m   * * * * * * * * * * * * * * * *
+    if (VOLTAGE > 0.00 && VOLTAGE < 0.10 ) {BAND=0;}   // parking
+
+    //==========================================================================================
+
+    bandSET();                                // set outputs
+    delay (20);
+}else{
+    if (abs(prevVALUE-VALUE)>10) {            // average
+        //means change or spurious number
+        prevVALUE=VALUE;
+    }else {
+        counter++;
+        prevVALUE=VALUE;
+    }
+}
+
+ *
+ * */
+ */
