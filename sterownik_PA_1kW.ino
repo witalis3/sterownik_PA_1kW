@@ -1,7 +1,6 @@
 #include "Arduino.h"
 #include <EEPROM.h>
 #include <UTFT.h>
-#include <SoftwareSerial.h>
 #include <UTouch.h>
 
 #include "sterownik_PA_1kW.h"
@@ -24,13 +23,14 @@
 
  ToDo
  	 - na razie nic
- 	 - zauważone usterki
+ 	 - zauważone usterki?
  	 	 - nie pamiętam
 			 - przy braku 50V (alarm od tego napięcia) działa PTT?
 			 - po puszczeniu PTT linijka SWR leci do końca czasami i powoduje generowanie błądu
 				 - może jest pomiar podczas odbioru jeszcze?
 				 - czy nie ma za dużych pojemności na wyj couplera -> inne dla FWD i inne dla REF (REF > FWD)
 			 - po przekroczeniu prądu brak kodu BCD?
+	 - ver. 1.9.16 AUTO dla Icoma (napięcie z ACC2)
 	 - ver. 1.9.15 wybór trybu wyświetlania mocy na PINie: 2kW/500W (lub inne wybrane)
 	 - ver. 1.9.14 poprawienie poprawki ;-)
 	 - ver. 1.9.13 poprawienie błędu od oldBandIdx (nie przełączał LPFów)
@@ -86,9 +86,6 @@
 				- komunikat na dole
  */
 
-//#define CZAS_PETLI
-//#define DEBUG
-
 UTFT myGLCD(SSD1963_800480, 38, 39, 40, 41);
 
 //URTouch myTouch(6, 5, 4, 3, 2);
@@ -118,12 +115,11 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 
 //#define BL_ONOFF_PIN     	54	// A0
 
-#define aiPin_Icom					0	// A0 wejście sygnału z Icom (CIV informacja o paśmie)
+#define aiPin_Icom					0	// A0 wejście sygnału z Icom (z gniazda ACC2 PIN 4; informacja o paśmie)
 #define aiPin_pwrForward   	1	// A1
 #define aiPin_pwrReturn    	2	// A2
 #define aiPin_drainVoltage 	3
 #define aiPin_aux1Voltage  	4	// 12V
-#define AUTO_ICOM			  	A5	// wybór źrodła automatycznego wyboru pasma: kodem DCBA czy napięciem z Icom; stan niski (masa) -> sterowanie z Icoma
 #define aiPin_pa1Amper     	6	// prąd drenu
 #define aiPin_temperatura1	7	// temperatura pierwszego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
 #define aiPin_temperatura2	8	// temperatura drugiego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
@@ -255,20 +251,23 @@ int Rf1 = 2677;				// rezystancja rezystora szeregowego z termistorem nr 1
 int Rf2 = 2685;				// rezystancja rezystora szeregowego z termistorem nr 2
 int Rf3 = 2700;				// rezystancja rezystora szeregowego z termistorem nr 3
 
-#define modeManualName "MANUALLY"
-#define modeAutoName   "AUTO"
+/*
+String modeAutoName;
 enum
 {
 	MANUAL = 0,
 	AUTO
 };
-byte mode = MANUAL;
+*/
 enum
 {
-	YAESU,
-	ICOM
+	MANUAL,
+	AUTO_YAESU,
+	AUTO_ICOM,
+	MODE_NUM
 };
-byte autoMode = YAESU;
+byte mode = MANUAL;
+//byte autoMode = YAESU;
 enum
 {
 	BAND_160 = 0,
@@ -297,6 +296,8 @@ enum
 };
 byte ATT[BAND_NUM] = {ATT1, ATT1, ATT1, ATT1, ATT1, ATT2, ATT2, ATT2, ATT2, ATT3};
 String BAND[BAND_NUM] = {"    160", "    80", "    40", "    30", "    20","    17", "    15","    12", "    10", "     6"};
+String BAND_Icom[BAND_NUM] = {"    160", "    80", "    40", "    30", "    20","  17  15", "  17  15","  12  10", "  12  10", "     6"};
+String MODE[MODE_NUM] = {"MANUALLY", "AUTO YAESU", "AUTO ICOM"};
 byte bandIdx = 1;
 byte oldBandIdx = 0;
 byte AutoBandIdx = 15;
@@ -914,7 +915,6 @@ void setup()
 
 //	pinMode(BL_ONOFF_PIN, OUTPUT);  	//backlight
 //	digitalWrite(BL_ONOFF_PIN, LOW);	//off
-	pinMode(aiPin_Icom, INPUT_PULLUP);
 #ifdef SP2HYO
 	pinMode(diPin_MniejszaMoc, INPUT_PULLUP);
 	if (digitalRead(diPin_MniejszaMoc) == LOW)
@@ -928,7 +928,7 @@ void setup()
 
 	// Run the setup and init everything
 #ifdef DEBUG
-		Serial.begin(115200);
+		Serial1.begin(115200);
 #endif
 	if (eeprom_read_byte(0) != COLDSTART_REF)
 	{
@@ -936,7 +936,7 @@ void setup()
 		EEPROM.write(2, mode);
 		EEPROM.write(0, COLDSTART_REF); // COLDSTART_REF in first byte indicates all initialized
 #ifdef DEBUG
-		Serial.println("writing initial values into memory");
+		Serial1.println("writing initial values into memory");
 #endif
 	}
 	else                       // EEPROM contains stored data, retrieve the data
@@ -946,8 +946,10 @@ void setup()
 		// read mode
 		mode = EEPROM.read(2);
 #ifdef DEBUG
-		Serial.println("reading bandIdx from memory: ");
-		Serial.println(bandIdx);
+		Serial1.println("reading bandIdx and mode from memory: ");
+		Serial1.println(bandIdx);
+		Serial1.print("mode: ");
+		Serial1.println(mode);
 #endif
 
 	}
@@ -1022,18 +1024,11 @@ void setup()
 	//myGLCD.print("DJ8QP ", RIGHT, 20);
 	//myGLCD.print("DC5ME ", RIGHT, 40);
 	myGLCD.setFont(SmallFont);
-	myGLCD.print("V1.9.15  ", RIGHT, 60);
+	myGLCD.print("V1.9.16  ", RIGHT, 60);
 
 	// Init the grafic objects
 	modeBox.init();
-	if (mode == MANUAL)
-	{
-		modeBox.setText(modeManualName);
-	}
-	else
-	{
-		modeBox.setText(modeAutoName);
-	}
+	modeBox.setText(MODE[mode]);
 	drainVoltageBox.init();
 	pa1AmperBox.init();
 	aux1VoltageBox.init();
@@ -1146,7 +1141,7 @@ void loop()
 		myTouch.read();
 		touchX = myTouch.getX();
 		touchY = myTouch.getY();
-#ifdef DEBUG
+#ifdef DEBUGi
 		myGLCD.drawPixel(touchX, touchY);
 		myGLCD.fillRect(700, 80, 780, 100);
 		myGLCD.setColor(vgaTitleUnitColor);
@@ -1157,27 +1152,27 @@ void loop()
 	}
 	read_inputs();
 #ifdef DEBUGi
-	Serial.println("---------------------");
-	Serial.print("ptt: ");
-	Serial.println(pttValue);
-	Serial.print("stby: ");
-	Serial.println(stbyValue);
-	Serial.print("pwrForward: ");
-	Serial.println(pwrForwardValue);
-	Serial.print("pwrReturn: ");
-	Serial.println(pwrReturnValue);
-	Serial.print("drainVoltage: ");
-	Serial.println(drainVoltageValue);
-	Serial.print("aux1Voltage: ");
-	Serial.println(aux1VoltageValue);
-	Serial.print("pa1Amper: ");
-	Serial.println(pa1AmperValue);
-	Serial.print("temperatura1: ");
-	Serial.println(temperaturValue1);
-	Serial.print("input:      ");
-	Serial.println(analogRead(aiPin_temperatura2));
-	Serial.print("temperatura2: ");
-	Serial.println(temperaturValue2);
+	Serial1.println("---------------------");
+	Serial1.print("ptt: ");
+	Serial1.println(pttValue);
+	Serial1.print("stby: ");
+	Serial1.println(stbyValue);
+	Serial1.print("pwrForward: ");
+	Serial1.println(pwrForwardValue);
+	Serial1.print("pwrReturn: ");
+	Serial1.println(pwrReturnValue);
+	Serial1.print("drainVoltage: ");
+	Serial1.println(drainVoltageValue);
+	Serial1.print("aux1Voltage: ");
+	Serial1.println(aux1VoltageValue);
+	Serial1.print("pa1Amper: ");
+	Serial1.println(pa1AmperValue);
+	Serial1.print("temperatura1: ");
+	Serial1.println(temperaturValue1);
+	Serial1.print("input:      ");
+	Serial1.println(analogRead(aiPin_temperatura2));
+	Serial1.print("temperatura2: ");
+	Serial1.println(temperaturValue2);
 #endif
 
 	//-----------------------------------------------------------------------------
@@ -1294,19 +1289,19 @@ void loop()
 	{
 		if (modeBox.isTouchInside(touchX, touchY))
 		{
-			if (modeBox.getText() == modeManualName)
+			if (mode >= MODE_NUM - 1)
 			{
-				modeBox.setText(modeAutoName);
+				mode = 0;
 			}
 			else
 			{
-				modeBox.setText(modeManualName);
+				mode++;
 			}
 			byla_zmiana = true;
 			czas_zmiany = millis();
+			modeBox.setText(MODE[mode]);
 		}
-		else if (pttValue == false and modeBox.getText() == modeManualName
-				and Up.isTouchInside(touchX, touchY))
+		else if (pttValue == false and mode == MANUAL and Up.isTouchInside(touchX, touchY))
 		{
 			if (bandIdx >= BAND_NUM - 1)
 			{
@@ -1322,8 +1317,7 @@ void loop()
 			pwrBar.resetValueMax();
 			swrBar.resetValueMax();
 		}
-		else if (pttValue == false and modeBox.getText() == modeManualName
-				and Down.isTouchInside(touchX, touchY))
+		else if (pttValue == false and mode == MANUAL and Down.isTouchInside(touchX, touchY))
 		{
 			if (bandIdx <= 0)
 			{
@@ -1385,6 +1379,8 @@ void loop()
 
 	//-----------------------------------------------------------------------------
 	// Reset genOutputEnable on any errorString
+	// ToDo DOUSU
+	// errorString = "";
 	if (errorString != "")
 	{
 		genOutputEnable = false;
@@ -1427,8 +1423,8 @@ void loop()
 		digitalWrite(doPin_blokada, LOW);
 	}
 
-	if (modeBox.getText() == modeAutoName)
-	{
+//	if (modeBox.getText() == modeAutoName)
+//	{
 		/*
 		    DataPort Codes
 			Band 	Code
@@ -1444,7 +1440,7 @@ void loop()
 			10m 	1001
 			6m 		1010
 		 */
-		if (autoMode == YAESU)
+		if (mode == AUTO_YAESU)
 		{
 			AutoBandIdx = 0;
 			AutoBandIdx = digitalRead(diPin_bandData_D) << 3
@@ -1464,11 +1460,18 @@ void loop()
 				}
 			}
 		}
-		else
+		if (mode == AUTO_ICOM)
 		{
 			bandIdx = IcomBand();
+			if (bandIdx != oldBandIdx)
+			{
+				bandBox.setText(BAND_Icom[bandIdx]);
+				pwrBar.resetValueMax();
+				swrBar.resetValueMax();
+				//oldBandIdx = bandIdx;	-> zapamiętanie oldBnadIdx dopiero po przełączeniu LPFa
+			}
 		}
-	}
+	//}
 
 	//-----------------------------------------------------------------------------
 	// Write to outputs
@@ -1606,21 +1609,14 @@ void loop()
 	if (byla_zmiana && (millis() - czas_zmiany > CZAS_REAKCJI))
 	{
 	    EEPROM.write(1, bandIdx);           // writing current band into eeprom
-	    if (modeBox.getText() == modeManualName)
-	    {
-		    EEPROM.write(2, MANUAL);
-	    }
-	    else
-	    {
-	    	EEPROM.write(2, AUTO);
-	    }
+	    EEPROM.write(2, mode);
 		byla_zmiana = false;
 #ifdef DEBUG
-		Serial.println("writing current settings to EEPROM: ");
-		Serial.print("bandIdx: ");
-		Serial.println(bandIdx);
-		Serial.print("mode: ");
-		Serial.println(modeBox.getText());
+		Serial1.println("writing current settings to EEPROM: ");
+		Serial1.print("bandIdx: ");
+		Serial1.println(bandIdx);
+		Serial1.print("mode: ");
+		Serial1.println(MODE[mode]);
 #endif
 	}
 
@@ -1646,14 +1642,14 @@ float getTemperatura(uint8_t pin, int Rf)
 	float R = Rf*U/(Uref - U);
 	float T = 1/(log(R/R25)/beta + 1/298.15);
 #ifdef DEBUGi
-	Serial.print("analogRead: ");
-	Serial.println(u);
-	Serial.print("U: ");
-	Serial.println(U);
-	Serial.print("R: ");
-	Serial.println(R);
-	Serial.print("T: ");
-	Serial.println(T);
+	Serial1.print("analogRead: ");
+	Serial1.println(u);
+	Serial1.print("U: ");
+	Serial1.println(U);
+	Serial1.print("R: ");
+	Serial1.println(R);
+	Serial1.print("T: ");
+	Serial1.println(T);
 #endif
 	return T - 273.15;
 }
@@ -1684,14 +1680,7 @@ void read_inputs()
 	SWRLPFmaxValue = (not digitalRead(diPin_SWR_LPF_max)) and (not digitalRead(diPin_blok_Alarm_SWR));
 	SWR_ster_max = not digitalRead(diPin_SWR_ster_max);		// aktywny stan niski
 	TermostatValue = not digitalRead(diPin_Termostat);		// aktywny stan niski
-	if (digitalRead(AUTO_ICOM == HIGH))
-	{
-		autoMode = YAESU;
-	}
-	else
-	{
-		autoMode = ICOM;
-	}
+	//getAutoMode();
 }
 float calc_SWR(int forward, int ref)
 {
@@ -1795,37 +1784,67 @@ byte IcomBand(void)
 	byte band;
 	unsigned int u_icom;
 	u_icom = analogRead(aiPin_Icom);
-	// ToDo zmienić zakresy -> na odwrót; sprawdzić w IC7600
-    if (u_icom < 57)
-        band = BAND_160;
-    else
-        if (u_icom < 171)
-        band = BAND_80;
-    else
-        if (u_icom < 285)
-        band = BAND_40;
-    else
-        if (u_icom < 399)
+	// ToDo zmienić zakresy -> na odwrót; sprawdzić w IC7600; test!
+    if (u_icom < 146)
         band = BAND_30;
     else
-        if (u_icom < 513)
-        band = BAND_20;
+        if (u_icom < 231)
+        band = BAND_6;
     else
-        if (u_icom < 627)
-        band = BAND_17;
-    else
-        if (u_icom < 741)
-        band = BAND_15;
-    else
-        if (u_icom < 855)
-        band =BAND_12;
-    else
-        if (u_icom < 969)
+        if (u_icom < 341)
         band = BAND_10;
     else
-        band = BAND_6;
+        if (u_icom < 463)
+        band = BAND_15;
+    else
+        if (u_icom < 585)
+        band = BAND_20;
+    else
+        if (u_icom < 706)
+        band = BAND_40;
+    else
+        if (u_icom < 828)
+        band = BAND_80;
+    else
+        band = BAND_160;
 	return band;
 }
+/*
+void getAutoMode(void)
+{
+	if (digitalRead(AUTO_ICOM == LOW))
+	{
+		autoMode = ICOM;
+		modeAutoName = "AUTO ICOM";
+	}
+	else
+	{
+		autoMode = YAESU;
+		modeAutoName = "AUTO YAESU";
+	}
+}
+*/
+/*
+if (u_icom < 120)
+    band = _30metr;
+else
+    if (u_icom < 300)
+    band = _10metr;
+else
+    if (u_icom < 490)
+    band = _15metr;
+else
+    if (u_icom < 670)
+    band = _20metr;
+else
+    if (u_icom < 760)
+    band = _40metr;
+else
+    if (u_icom < 900)
+    band = _80metr;
+else
+    band = _160metr;
+    */
 //         icom        ADC        результат преобразования
 //1,8 -    7.5v        2.5v       1000
 //3.5 -    6.1v        2.0v       813
@@ -1876,7 +1895,5 @@ if (counter == 5) {
         prevVALUE=VALUE;
     }
 }
-
- *
- * */
  */
+
