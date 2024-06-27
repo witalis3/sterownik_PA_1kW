@@ -221,8 +221,8 @@ bool errLedValue;
 
 #define inputFactorVoltage (5.0/1023.0)
 #ifdef SP2HYO
-#define pwrForwardFactor (inputFactorVoltage * (320.0/5.0))
-#define pwrReturnFactor (inputFactorVoltage * (320.0/5.0))
+#define pwrForwardFactor (inputFactorVoltage * (350.0/5.0))   //Bylo 320.0/5.0
+#define pwrReturnFactor (inputFactorVoltage * (350.0/5.0))
 #endif
 #ifdef SP3JDZ
 #define pwrForwardFactor (inputFactorVoltage * (222.0/5.0))
@@ -233,7 +233,7 @@ bool errLedValue;
 #define aux2VoltageFactor (inputFactorVoltage * (15.0/5.0)) // 5V Input = 15V PA
 #ifdef ACS758
 #define pa1AmperFactor (inputFactorVoltage * (125/2.5))    // 20mV/A ACS758LCB-100B
-#define pa1AmperOffset (1023/5 * 2.555)                     // 2.5V z czujnika Hallla -> zmierzyć i wstawić
+#define pa1AmperOffset (1023/5 * 2.590)                     // 2.5V z czujnika Hallla -> zmierzyć i wstawić  //dobrac na 0,0A
 #else
 #define pa1AmperFactor (inputFactorVoltage * (65.0/5.0))    // 1k Ris w BTS50085
 #define pa1AmperOffset (0.0)                     // 0.0V	- pomiar z BTS50085 - od zera
@@ -245,11 +245,11 @@ bool errLedValue;
 // zmienne na potrzeby pomiaru temperatury
 float Uref = 5.0;			// napięcie zasilające dzielnik pomiarowy temperatury
 float Vref = 5.0;			// napięcie odniesienia dla ADC
-int beta = 3500;			// współczynnik beta termistora
-int R25 = 1800;				// rezystancja termistora w temperaturze 25C
-int Rf1 = 2677;				// rezystancja rezystora szeregowego z termistorem nr 1
-int Rf2 = 2685;				// rezystancja rezystora szeregowego z termistorem nr 2
-int Rf3 = 2700;				// rezystancja rezystora szeregowego z termistorem nr 3
+int beta = 3977;			// współczynnik beta termistora
+int R25 = 10000;				// rezystancja termistora w temperaturze 25C
+int Rf1 = 10000;				// rezystancja rezystora szeregowego z termistorem nr 1   / Rezystory 1%
+int Rf2 = 10000;				// rezystancja rezystora szeregowego z termistorem nr 2
+int Rf3 = 10000;				// rezystancja rezystora szeregowego z termistorem nr 3
 
 /*
 String modeAutoName;
@@ -294,7 +294,7 @@ enum
 	ATT3
 #endif
 };
-byte ATT[BAND_NUM] = {ATT1, ATT1, ATT1, ATT1, ATT1, ATT2, ATT2, ATT2, ATT2, ATT3};
+byte ATT[BAND_NUM] = {15, 15, 15, 15, 15, 15, 15, ATT3, ATT3, ATT3};         // ATT1 lub ATT2 lub ATT3 lub 15 jako wylaczenie wszystkich wyjsc
 String BAND[BAND_NUM] = {"    160", "    80", "    40", "    30", "    20","    17", "    15","    12", "    10", "     6"};
 String BAND_Icom[BAND_NUM] = {"    160", "    80", "    40", "    30", "    20","  17  15", "  17  15","  12  10", "  12  10", "     6"};
 String MODE[MODE_NUM] = {"MANUALLY", "AUTO YAESU", "AUTO ICOM"};
@@ -305,9 +305,9 @@ byte AutoBandIdx = 15;
 #define thresholdCurrent           1.0
 #define thresholdPower             5.0
 #define thresholdSWR               3.5		// zmiana na 3.5 dla HYO
-#define thresholdTemperaturAirOn1   55
-#define thresholdTemperaturTransistorMax	70		// temperatura tranzystora (z termistora nr 1), przy której PA jest blokowane - STBY
-#define thresholdTemperaturAirOn2   50
+#define thresholdTemperaturAirOn1   48       // ustawienie temperatury włączenia wentylatora 1
+#define thresholdTemperaturTransistorMax	72		// temperatura tranzystora (z termistora nr 1), przy której PA jest blokowane - STBY
+#define thresholdTemperaturAirOn2   62         // ustawienie temperatury włączenia wentylatora 2
 
 String infoString = "";
 String warningString = "";		// nieużywany
@@ -848,8 +848,8 @@ InfoBox modeBox("MODE", "", 395, 60, 32, 200, 0, 0, vgaValueColor, vgaBackground
 
 InfoBox bandBox("LPF", "m", 20, 20, 72, 350, 0, 0, vgaValueColor, vgaBackgroundColor, GroteskBold32x64);
 
-InfoBox pa1AmperBox("PA 1", "A", 20, 340, 32, 125, 0, 62.0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
-InfoBox drainVoltageBox("DRAIN", "V", 20, 380, 32, 125, 48, 58, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
+InfoBox pa1AmperBox("PA 1", "A", 20, 340, 32, 125, 0, 65.0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);      // // Zmiana zakresu prądu
+InfoBox drainVoltageBox("DRAIN", "V", 20, 380, 32, 125, 48, 65, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);   // // Zmiana zakresu napięcia
 
 InfoBox aux1VoltageBox("AUX ", "V", 170, 380, 32, 125, 11, 15, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
 //InfoBox aux1VoltageBox("AUX R", "V", 170, 340, 32, 125, 11, 15, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
@@ -861,11 +861,11 @@ InfoBox airBox2("AIR2", "", 470, 380, 32, 125, 0, 0, vgaValueColor, vgaBackgroun
 //InfoBox pa2AmperBox("PA 2", "A", 170, 380, 32, 125, 0, 24.9, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
 
 // temperatury 10 do 70 stopni
-InfoBox temperaturBox1("", "`C", 170, 340, 32, 125, 10, 70, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
-InfoBox temperaturBox2("", "`C", 320, 340, 32, 125, 10, 70, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
+InfoBox temperaturBox1("", "`C", 170, 340, 32, 125, 10, 72, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);         //  bylo   60
+InfoBox temperaturBox2("", "`C", 320, 340, 32, 125, 10, 72, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);       //  bylo   60
 
 //InfoBox temperaturBox2("", "`C", 320, 380, 32, 125, 10, 60, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
-InfoBox temperaturBox3("", "`C", 320, 380, 32, 125, 10, 65, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
+InfoBox temperaturBox3("", "`C", 320, 380, 32, 125, 10, 75, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);        //  bylo   60
 
 // wypełniacz pustego boksu
 //InfoBox emptyBox("", "", 170, 380, 32, 125, 0.0, 0.0, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
@@ -878,11 +878,12 @@ DisplayBar swrBar("SWR", "", 20, 226, 80, 760, 1, 5, 3, 4, vgaBarColor, vgaBackg
 //DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 2500, 750, 1750, vgaBarColor, vgaBackgroundColor, 10);
 
 #ifdef SP2HYO
-	DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 2000, 600, 1400, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 2,0kw
+DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 2500, 750, 1750, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 2,5kw
+//DisplayBar pwrBar("PWR", "W", 20, 126, 80, 760, 0, 3000, 900, 2100, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 3,0kw
 	float minValue = 0.0;
 	float maxValue = 650.0;
 	float warnValue1 = 195.0;
-	float warnValue2 = 455.0;
+	float warnValue2 = 455.0;   // Dla zakresu 0,65KW
 #endif
 
 //pwrBar.DisplayBar("PWR", "W", 20, 126, 80, 760, 0, 650, 195, 455, vgaBarColor, vgaBackgroundColor, 10);      // // Wybor wskaznika PWR_skali 0,65kw
@@ -1379,8 +1380,6 @@ void loop()
 
 	//-----------------------------------------------------------------------------
 	// Reset genOutputEnable on any errorString
-	// ToDo DOUSU
-	// errorString = "";
 	if (errorString != "")
 	{
 		genOutputEnable = false;
@@ -1637,7 +1636,7 @@ void loop()
 
 float getTemperatura(uint8_t pin, int Rf)
 {
-	int u = analogRead(pin);
+	int u = analogRead(pin);            //xxxxxxxxxxxxxxxxxxxx
 	float U = Vref*u/1023;
 	float R = Rf*U/(Uref - U);
 	float T = 1/(log(R/R25)/beta + 1/298.15);
@@ -1680,7 +1679,6 @@ void read_inputs()
 	SWRLPFmaxValue = (not digitalRead(diPin_SWR_LPF_max)) and (not digitalRead(diPin_blok_Alarm_SWR));
 	SWR_ster_max = not digitalRead(diPin_SWR_ster_max);		// aktywny stan niski
 	TermostatValue = not digitalRead(diPin_Termostat);		// aktywny stan niski
-	//getAutoMode();
 }
 float calc_SWR(int forward, int ref)
 {

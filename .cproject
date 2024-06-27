@@ -25,6 +25,7 @@
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/SPI/src}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/UTouch}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/EEPROM/src}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/SoftwareSerial/src}&quot;"/>
 								</option>
 								<inputType id="io.sloeber.compiler.cpp.sketch.input.338665734" name="CPP source files" superClass="io.sloeber.compiler.cpp.sketch.input"/>
 							</tool>
@@ -36,6 +37,7 @@
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/SPI/src}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/UTouch}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/EEPROM/src}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/SoftwareSerial/src}&quot;"/>
 								</option>
 								<inputType id="io.sloeber.compiler.c.sketch.input.1178496204" name="C Source Files" superClass="io.sloeber.compiler.c.sketch.input"/>
 							</tool>
@@ -47,6 +49,7 @@
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/SPI/src}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/UTouch}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/EEPROM/src}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/sterownik_PA_1kW/libraries/SoftwareSerial/src}&quot;"/>
 								</option>
 								<inputType id="io.sloeber.compiler.S.sketch.input.2051283506" name="Assembly source files" superClass="io.sloeber.compiler.S.sketch.input"/>
 							</tool>
