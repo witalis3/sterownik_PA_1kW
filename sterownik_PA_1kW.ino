@@ -156,9 +156,9 @@ extern uint8_t franklingothic_normal[];		// 16x16 ->  22 (17x20) lub 21 (13x17)
 #define aiPin_drainVoltage 	A8	// pomiar 48V D62 pin 2 złącza A600 Vsense; J4 pin 3
 #define aiPin_aux1Voltage  	A3	// pomiar 12V D57 napięcie z dzielnika 1:3 z 12V; J3 pin 3
 #define aiPin_pa1Amper     	15	// prąd drenu
-#define aiPin_temperatura1	12	//  temperatura pierwszego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
-#define aiPin_temperatura2	13	// temperatura drugiego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax
-#define aiPin_temperatura3	14	// temperatura radiatora
+#define aiPin_temperatura1	12	//  temperatura pierwszego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax D66
+#define aiPin_temperatura2	13	// temperatura drugiego tranzystora - blokada po przekroczeniu thresholdTemperaturTransistorMax D67
+#define aiPin_temperatura3	14	// temperatura radiatora D68
 
 /*
 #define doPin_Band_A   		64	// doPin band A; 	A10
