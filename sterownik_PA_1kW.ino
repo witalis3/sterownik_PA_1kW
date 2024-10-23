@@ -22,14 +22,9 @@
  Całkowity pobór prądu z 5V (wyświetlacz, shield, arduino mega 2560) około 400mA.
 
  ToDo
- 	 - na razie nic
- 	 - zauważone usterki?
- 	 	 - nie pamiętam
-			 - przy braku 50V (alarm od tego napięcia) działa PTT?
-			 - po puszczeniu PTT linijka SWR leci do końca czasami i powoduje generowanie błądu
-				 - może jest pomiar podczas odbioru jeszcze?
-				 - czy nie ma za dużych pojemności na wyj couplera -> inne dla FWD i inne dla REF (REF > FWD)
-			 - po przekroczeniu prądu brak kodu BCD?
+	- ver. 1.9.17 diPin_blok_Alarm_SWR sprawdzić obsługę
+		- niby jest obsługa
+		- dodałem stbyValue do blokady alarmu od SWR3 (od SWR wyliczonego przez sterownik - błąd: "Error: SWR anteny sterownik"
 	 - ver. 1.9.16 AUTO dla Icoma (napięcie z ACC2)
 	 - ver. 1.9.15 wybór trybu wyświetlania mocy na PINie: 2kW/500W (lub inne wybrane)
 	 - ver. 1.9.14 poprawienie poprawki ;-)
@@ -59,6 +54,14 @@
  	 - ver. 1.9.5 trzeci termistor
  	 - ver. 1.9.4
  	 	 - zerowanie mocy szczytowej po zmianie pasma (ręcznej lub auto)
+---------------------------------------
+ 	 - zauważone usterki?
+ 	 	 - nie pamiętam
+			 - przy braku 50V (alarm od tego napięcia) działa PTT?
+			 - po puszczeniu PTT linijka SWR leci do końca czasami i powoduje generowanie błądu
+				 - może jest pomiar podczas odbioru jeszcze?
+				 - czy nie ma za dużych pojemności na wyj couplera -> inne dla FWD i inne dla REF (REF > FWD)
+			 - po przekroczeniu prądu brak kodu BCD?
  	- spowolnienie przy spadku z dużego SWR?
  		- test
  			- wyłączyć 4% spadek przy value > valueMax (spadek wartości powyżej ValueMax natychmiastowy)
@@ -645,11 +648,8 @@ public:
 		_widthBar = xPosInfoBox - _xPos - 2 * _xPadding;
 
 		//                               title    unit     xPos           yPos              height  width, minValue, maxValue,  colorValue       colorBack             font
-		ptrActBox = new InfoBox("", _unit, xPosInfoBox, yPosInfoBox, 32, 125, 0,
-				_maxValue, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
-		ptrMaxBox = new InfoBox("PEP", _unit, xPosInfoBox, yPosInfoBox + 32, 32,
-				125, 0, _maxValue, vgaValueColor, vgaBackgroundColor,
-				GroteskBold16x32);
+		ptrActBox = new InfoBox("", _unit, xPosInfoBox, yPosInfoBox, 32, 125, 0, _maxValue, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
+		ptrMaxBox = new InfoBox("PEP", _unit, xPosInfoBox, yPosInfoBox + 32, 32, 125, 0, _maxValue, vgaValueColor, vgaBackgroundColor, GroteskBold16x32);
 
 		ptrActBox->init();
 		ptrMaxBox->init();
@@ -969,7 +969,7 @@ void setup()
 	myTouch.InitTouch(LANDSCAPE);
 	myTouch.setPrecision(PREC_MEDIUM);
 
-	pinMode(diPin_blok_Alarm_SWR, INPUT_PULLUP);	// stan aktywny wysoki -> musi być coś podpięte lub rezystor do masy
+	pinMode(diPin_blok_Alarm_SWR, INPUT_PULLUP);	// stan aktywny wysoki -> musi być coś podpięte lub rezystor do masy, żeby nie było blokady
 	pinMode(diPin_Termostat, INPUT_PULLUP);
 	pinMode(doPin_SWR_ant, OUTPUT);
 	digitalWrite(doPin_SWR_ant, HIGH);
@@ -994,7 +994,7 @@ void setup()
 	pinMode(diPin_stby, INPUT_PULLUP);
 	pinMode(diPin_Imax, INPUT_PULLUP);
 	pinMode(diPin_Pmax, INPUT_PULLUP);
-	pinMode(diPin_SWRmax, INPUT_PULLUP);
+	pinMode(diPin_SWRmax, INPUT_PULLUP);			// stan aktywny ?
 	pinMode(doPin_ATT1, OUTPUT);
 	digitalWrite(doPin_ATT1, HIGH);	// stan aktywny niski
 	pinMode(doPin_ATT2, OUTPUT);
@@ -1025,7 +1025,7 @@ void setup()
 	//myGLCD.print("DJ8QP ", RIGHT, 20);
 	//myGLCD.print("DC5ME ", RIGHT, 40);
 	myGLCD.setFont(SmallFont);
-	myGLCD.print("V1.9.16  ", RIGHT, 60);
+	myGLCD.print("V1.9.17  ", RIGHT, 60);
 
 	// Init the grafic objects
 	modeBox.init();
@@ -1185,7 +1185,7 @@ void loop()
 
 		swrValue = calc_SWR(forwardValue, returnValue);
 		bool blok_Alarm_SWR = digitalRead(diPin_blok_Alarm_SWR);
-		if (swrValue > thresholdSWR and not blok_Alarm_SWR)
+		if ( (swrValue > thresholdSWR) and not blok_Alarm_SWR and not stbyValue )
 		{
 			digitalWrite(doPin_SWR_ant, LOW);
 			SWR3Value = true;
@@ -1674,7 +1674,7 @@ void read_inputs()
 	stbyValue = digitalRead(diPin_stby);					// aktywny stan wysoki
 	ImaxValue = not digitalRead(diPin_Imax);				// aktywny stan niski
 	PmaxValue = not digitalRead(diPin_Pmax);				// aktywny stan niski
-	SWRmaxValue = not (digitalRead(diPin_SWRmax) or digitalRead(diPin_blok_Alarm_SWR));			// aktywny stan niski (dla diPin_SWRmax)
+	SWRmaxValue = not ( digitalRead(diPin_SWRmax) or digitalRead(diPin_blok_Alarm_SWR) );			// aktywny stan niski (dla diPin_SWRmax)
 	// aktywny stan niski (dla diPin_SWR_LPF_max); aktywny stan wysoki dla blokady
 	SWRLPFmaxValue = (not digitalRead(diPin_SWR_LPF_max)) and (not digitalRead(diPin_blok_Alarm_SWR));
 	SWR_ster_max = not digitalRead(diPin_SWR_ster_max);		// aktywny stan niski
