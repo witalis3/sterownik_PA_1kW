@@ -25,6 +25,7 @@
 	- ver. 1.9.17 diPin_blok_Alarm_SWR sprawdzić obsługę
 		- niby jest obsługa
 		- dodałem stbyValue do blokady alarmu od SWR3 (od SWR wyliczonego przez sterownik - błąd: "Error: SWR anteny sterownik"
+		- dodanie j.w. do "Error outside range of"
 	 - ver. 1.9.16 AUTO dla Icoma (napięcie z ACC2)
 	 - ver. 1.9.15 wybór trybu wyświetlania mocy na PINie: 2kW/500W (lub inne wybrane)
 	 - ver. 1.9.14 poprawienie poprawki ;-)
@@ -1195,8 +1196,8 @@ void loop()
 			digitalWrite(doPin_SWR_ant, HIGH);
 			SWR3Value = false;
 		}
-		if (blok_Alarm_SWR and swrValue >= 5.0)
-			swrValue = 4.9;		// sztuczne obniżenie wartości SWR podczas strojenia ATU
+		if ((blok_Alarm_SWR or stbyValue)  and swrValue >= 5.0)
+			swrValue = 4.9;		// sztuczne obniżenie wartości SWR podczas strojenia ATU oraz na STBY
 		swrBar.setValue(swrValue, drawWidgetIndex == 2);
 	}
 
