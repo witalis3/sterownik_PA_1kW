@@ -22,6 +22,7 @@
  Całkowity pobór prądu z 5V (wyświetlacz, shield, arduino mega 2560) około 400mA.
 
  ToDo
+ 	 - ver. 1.9.18 uśrednianie odczytu SWR i mocy
 	- ver. 1.9.17 diPin_blok_Alarm_SWR sprawdzić obsługę
 		- niby jest obsługa
 		- dodałem stbyValue do blokady alarmu od SWR3 (od SWR wyliczonego przez sterownik - błąd: "Error: SWR anteny sterownik"
@@ -205,7 +206,7 @@ int rev_calc = 0;
 int p_curr = 0;			// licznik odczytów
 float fwd_pwr;
 float rev_pwr;
-#define SWR_SAMPLES_CNT             1
+#define SWR_SAMPLES_CNT             2		// ilość pomiarów do uśredniania
 
 // Define the boolValue variables
 bool pttValue = false;
@@ -225,18 +226,18 @@ bool errLedValue;
 
 #define inputFactorVoltage (5.0/1023.0)
 #ifdef SP2HYO
-#define pwrForwardFactor (inputFactorVoltage * (350.0/5.0))   //Bylo 320.0/5.0
+#define pwrForwardFactor (inputFactorVoltage * (350.0/5.0))   //Bylo 320.0/5.0  - ustawienie mocy
 #define pwrReturnFactor (inputFactorVoltage * (350.0/5.0))
 #endif
 #ifdef SP3JDZ
 #define pwrForwardFactor (inputFactorVoltage * (222.0/5.0))
 #define pwrReturnFactor (inputFactorVoltage * (222.0/5.0))
 #endif
-#define drainVoltageFactor (inputFactorVoltage * (60.0/5.0))// 5V Input = 60V PA
+#define drainVoltageFactor (inputFactorVoltage * (65.0/5.0))// 5V Input = 65V PA
 #define aux1VoltageFactor (inputFactorVoltage * (30.0/5.0)) // 5V Input = 30V PA
 #define aux2VoltageFactor (inputFactorVoltage * (15.0/5.0)) // 5V Input = 15V PA
 #ifdef ACS758
-#define pa1AmperFactor (inputFactorVoltage * (125/2.5))    // 20mV/A ACS758LCB-100B
+#define pa1AmperFactor (inputFactorVoltage * (130/2.5))    // 20mV/A ACS758LCB-100B  - ustawienie wartosci pradu ( było 125/2.5 )
 #define pa1AmperOffset (1023/5 * 2.590)                     // 2.5V z czujnika Hallla -> zmierzyć i wstawić  //dobrac na 0,0A
 #else
 #define pa1AmperFactor (inputFactorVoltage * (65.0/5.0))    // 1k Ris w BTS50085
@@ -1026,7 +1027,7 @@ void setup()
 	//myGLCD.print("DJ8QP ", RIGHT, 20);
 	//myGLCD.print("DC5ME ", RIGHT, 40);
 	myGLCD.setFont(SmallFont);
-	myGLCD.print("V1.9.17  ", RIGHT, 60);
+	myGLCD.print("V1.9.18  ", RIGHT, 60);
 
 	// Init the grafic objects
 	modeBox.init();
@@ -1181,25 +1182,21 @@ void loop()
 	// Set display values. The widgets monitors the values and output an errorString
 	pwrBar.setValue(pwrForwardValue, drawWidgetIndex == 1);
 	//if (UpdatePowerAndVSWR())
-	if (true)
+	swrValue = calc_SWR(forwardValueAvg, returnValueAvg);
+	bool blok_Alarm_SWR = digitalRead(diPin_blok_Alarm_SWR);
+	if ((swrValue > thresholdSWR) and not blok_Alarm_SWR and not stbyValue)
 	{
-
-		swrValue = calc_SWR(forwardValue, returnValue);
-		bool blok_Alarm_SWR = digitalRead(diPin_blok_Alarm_SWR);
-		if ( (swrValue > thresholdSWR) and not blok_Alarm_SWR and not stbyValue )
-		{
-			digitalWrite(doPin_SWR_ant, LOW);
-			SWR3Value = true;
-		}
-		else
-		{
-			digitalWrite(doPin_SWR_ant, HIGH);
-			SWR3Value = false;
-		}
-		if ((blok_Alarm_SWR or stbyValue)  and swrValue >= 5.0)
-			swrValue = 4.9;		// sztuczne obniżenie wartości SWR podczas strojenia ATU oraz na STBY
-		swrBar.setValue(swrValue, drawWidgetIndex == 2);
+		digitalWrite(doPin_SWR_ant, LOW);
+		SWR3Value = true;
 	}
+	else
+	{
+		digitalWrite(doPin_SWR_ant, HIGH);
+		SWR3Value = false;
+	}
+	if ((blok_Alarm_SWR or stbyValue) and swrValue >= 5.0)
+		swrValue = 4.9;	// sztuczne obniżenie wartości SWR podczas strojenia ATU oraz na STBY
+	swrBar.setValue(swrValue, drawWidgetIndex == 2);
 
 	drainVoltageBox.setFloat(drainVoltageValue, 1, 4, drawWidgetIndex == 3);
 	aux1VoltageBox.setFloat(aux1VoltageValue, 1, 4, drawWidgetIndex == 4);
@@ -1658,10 +1655,40 @@ void read_inputs()
 {
 	//-----------------------------------------------------------------------------
 	// Read all inputs
+	/*
 	forwardValue = analogRead(aiPin_pwrForward);
 	pwrForwardValue = sq(forwardValue * pwrForwardFactor) / 50;
 	returnValue = analogRead(aiPin_pwrReturn);
 	pwrReturnValue = sq(returnValue * pwrReturnFactor) / 50;
+	*/
+
+	// Read FWD and REF i uśrednianie
+#ifdef KOREKCJA
+	forwardValue = correction(analogRead(aiPin_pwrForward));
+	returnValue = correction(analogRead(aiPin_pwrReturn));
+#else
+	forwardValue = analogRead(aiPin_pwrForward);
+	returnValue = analogRead(aiPin_pwrReturn);
+#endif
+	if (p_curr < SWR_SAMPLES_CNT)
+	{
+		fwd_calc += forwardValue;
+		rev_calc += returnValue;
+		p_curr++;
+	}
+	else
+	{
+		// Compute average values
+		forwardValueAvg = fwd_calc / SWR_SAMPLES_CNT;
+		returnValueAvg = rev_calc / SWR_SAMPLES_CNT;
+		// Reset accumulators and variables for power measurements
+		p_curr = 0;
+		fwd_calc = 0;
+		rev_calc = 0;
+		pwrForwardValue = sq(forwardValueAvg * pwrForwardFactor) / 50;
+		pwrReturnValue = sq(returnValueAvg * pwrReturnFactor) / 50;
+	}
+
 	drainVoltageValue = analogRead(aiPin_drainVoltage) * drainVoltageFactor;
 	aux1VoltageValue = analogRead(aiPin_aux1Voltage) * aux1VoltageFactor;
 	pa1AmperValue = (analogRead(aiPin_pa1Amper) - pa1AmperOffset)*pa1AmperFactor;
@@ -1706,27 +1733,9 @@ float calc_SWR(int forward, int ref)
 	}
 	return swr;
 }
-/*
-float calc_SWR(float forward, float ref)
-{
-	float swr;
-	float stosunek;
-	if (forward > 0)
-	{
-		stosunek = ref/forward;
-		swr = fabs((1.0 + sqrtf(stosunek)) / (1.0 - sqrtf(stosunek)));
-	}
-	else
-	{
-		swr = 1;
-	}
-	return swr;
-}
-*/
 bool UpdatePowerAndVSWR()
 {
 	bool retval = false;
-
 	// Collect samples
 	if (p_curr < SWR_SAMPLES_CNT)
 	{
@@ -1738,39 +1747,12 @@ bool UpdatePowerAndVSWR()
 	{
 		// Compute average values
 		forwardValueAvg = fwd_calc / SWR_SAMPLES_CNT;
-		//fwd_pwr = sq((forwardValueAvg) * pwrForwardFactor) / 50; NA RAZIE niepotrzebne
 		returnValueAvg = rev_calc / SWR_SAMPLES_CNT;
-		//rev_pwr = sq((returnValueAvg) * pwrReturnFactor) / 50;
 
-		/*
-		PowerFromADCValue(swrm.fwd_calc / SWR_SAMPLES_CNT, sensor_null,
-				coupling_calc, &swrm.fwd_pwr, &swrm.fwd_dbm);
-		PowerFromADCValue(swrm.rev_calc / SWR_SAMPLES_CNT, sensor_null,
-				coupling_calc, &swrm.rev_pwr, &swrm.rev_dbm);
-*/
 		// Reset accumulators and variables for power measurements
 		p_curr = 0;
 		fwd_calc = 0;
 		rev_calc = 0;
-		// Calculate VSWR from power readings
-/*
-		swrm.vswr = (1 + sqrtf(swrm.rev_pwr / swrm.fwd_pwr))
-				/ (1 - sqrtf(swrm.rev_pwr / swrm.fwd_pwr));
-*/
-		/*
-		 // Perform VSWR protection iff threshold is > 1 AND enough forward power exists for a valid calculation
-		 if ( ts.vswr_protection_threshold > 1 && swrm.fwd_pwr >= SWR_MIN_CALC_POWER)
-		 {
-		 if ( swrm.vswr > ts.vswr_protection_threshold )
-		 {
-		 RadioManagement_DisablePaBias ( );
-		 swrm.high_vswr_detected = true;
-
-		 // change output power to "PA_LEVEL_0_5W" when VSWR protection is active
-		 RadioManagement_SetPowerLevel ( RadioManagement_GetBand ( df.tune_new), PA_LEVEL_MINIMAL );
-		 }
-		 }
-		 */
 		retval = true;
 	}
 	return retval;
